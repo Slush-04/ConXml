@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" xmlns:pago20="http://www.sat.gob.mx/Pagos20" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sat.gob.mx/cfd/4 http://www.sat.gob.mx/sitio_internet/cfd/4/cfdv40.xsd" Version="4.0" Fecha="2024-02-01T10:30:00" Sello="U2VsbG8=" NoCertificado="30001000000400002334" Certificado="Q2VydA==" SubTotal="0.00" Moneda="XXX" Total="0.00" TipoDeComprobante="P" Exportacion="01" LugarExpedicion="45000">
+  <cfdi:Emisor Rfc="EKU9003173C9" Nombre="EMPRESA DE PRUEBA SA DE CV" RegimenFiscal="601"/>
+  <cfdi:Receptor Rfc="XAXX010101000" Nombre="CLIENTE DE PRUEBA" DomicilioFiscalReceptor="45000" RegimenFiscalReceptor="616" UsoCFDI="CP01"/>
+  <cfdi:Conceptos>
+    <cfdi:Concepto ClaveProdServ="84111506" Cantidad="1" ClaveUnidad="ACT" Descripcion="Pago" ValorUnitario="0.00" Importe="0.00" ObjetoImp="01"/>
+  </cfdi:Conceptos>
+  <cfdi:Complemento>
+    <pago20:Pagos Version="2.0">
+      <pago20:Totales MontoTotalPagos="1160.00"/>
+      <pago20:Pago FechaPago="2024-02-01T10:00:00" FormaDePagoP="03" MonedaP="MXN" Monto="1160.00" NumOperacion="TRF-88412">
+        <pago20:DoctoRelacionado IdDocumento="123E4567-E89B-12D3-A456-426614174000" Serie="A" Folio="124" MonedaDR="MXN" NumParcialidad="1" ImpSaldoAnt="1160.00" ImpPagado="1160.00" ImpSaldoInsoluto="0.00"/>
+      </pago20:Pago>
+    </pago20:Pagos>
+  </cfdi:Complemento>
+  <cfdi:Complemento>
+    <tfd:TimbreFiscalDigital Version="1.1" UUID="A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D" FechaTimbrado="2024-02-01T10:35:00" RfcProvCertif="SAT970701NX3" SelloCFD="U2VsbG9DRkQ=" NoCertificadoSAT="20001000000300022323" SelloSAT="U2VsbG9TQVQ="/>
+  </cfdi:Complemento>
+</cfdi:Comprobante>

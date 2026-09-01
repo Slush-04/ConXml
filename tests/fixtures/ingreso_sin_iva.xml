@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sat.gob.mx/cfd/4 http://www.sat.gob.mx/sitio_internet/cfd/4/cfdv40.xsd" Version="4.0" Serie="B" Folio="7" Fecha="2024-02-05T11:00:00" Sello="U2VsbG8=" NoCertificado="30001000000400002334" Certificado="Q2VydA==" SubTotal="500.00" Moneda="MXN" Total="500.00" TipoDeComprobante="I" Exportacion="01" MetodoPago="PUE" FormaPago="17" LugarExpedicion="45000">
+  <cfdi:Emisor Rfc="EKU9003173C9" Nombre="EMPRESA DE PRUEBA SA DE CV" RegimenFiscal="601"/>
+  <cfdi:Receptor Rfc="COSC8001137TA" Nombre="CLIENTE SIN IMPUESTOS" DomicilioFiscalReceptor="45000" RegimenFiscalReceptor="612" UsoCFDI="S01"/>
+  <cfdi:Conceptos>
+    <cfdi:Concepto ClaveProdServ="84111500" Cantidad="1" ClaveUnidad="ACT" Descripcion="Servicio sin objeto de impuesto" ValorUnitario="500.00" Importe="500.00" ObjetoImp="01"/>
+  </cfdi:Conceptos>
+  <cfdi:Complemento>
+    <tfd:TimbreFiscalDigital Version="1.1" UUID="9C3A1C2E-8B4D-4F6A-9E0B-2D7F5A1C3E4F" FechaTimbrado="2024-02-05T11:05:00" RfcProvCertif="SAT970701NX3" SelloCFD="U2VsbG9DRkQ=" NoCertificadoSAT="20001000000300022323" SelloSAT="U2VsbG9TQVQ="/>
+  </cfdi:Complemento>
+</cfdi:Comprobante>

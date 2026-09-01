@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" xmlns:pago20="http://www.sat.gob.mx/Pagos20" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sat.gob.mx/cfd/4 http://www.sat.gob.mx/sitio_internet/cfd/4/cfdv40.xsd" Version="4.0" Fecha="2024-03-15T12:00:00" Sello="U2VsbG8=" NoCertificado="30001000000400002334" Certificado="Q2VydA==" SubTotal="0.00" Moneda="XXX" Total="0.00" TipoDeComprobante="P" Exportacion="01" LugarExpedicion="45000">
+  <cfdi:Emisor Rfc="EKU9003173C9" Nombre="EMPRESA DE PRUEBA SA DE CV" RegimenFiscal="601"/>
+  <cfdi:Receptor Rfc="COSC8001137TA" Nombre="CLIENTE PAGOS MULTIPLES" DomicilioFiscalReceptor="45000" RegimenFiscalReceptor="612" UsoCFDI="CP01"/>
+  <cfdi:Conceptos>
+    <cfdi:Concepto ClaveProdServ="84111506" Cantidad="1" ClaveUnidad="ACT" Descripcion="Pago" ValorUnitario="0.00" Importe="0.00" ObjetoImp="01"/>
+  </cfdi:Conceptos>
+  <cfdi:Complemento>
+    <pago20:Pagos Version="2.0">
+      <pago20:Totales MontoTotalPagos="31340.00"/>
+      <pago20:Pago FechaPago="2024-03-15T11:30:00" FormaDePagoP="02" MonedaP="USD" TipoCambioP="17.5000" Monto="300.00" NumOperacion="CH-77890" RfcEmisorCtaOrd="BBVA901234" CtaOrdenante="012180041100009999" CtaBeneficiario="012180041100008888">
+        <pago20:DoctoRelacionado IdDocumento="D1E2F3A4-B5C6-4D7E-8F90-A1B2C3D4E5F6" MonedaDR="USD" EquivalenciaDR="1.0000" NumParcialidad="1" ImpSaldoAnt="500.00" ImpPagado="200.00" ImpSaldoInsoluto="300.00"/>
+        <pago20:DoctoRelacionado IdDocumento="D1E2F3A4-B5C6-4D7E-8F90-A1B2C3D4E5F6" MonedaDR="USD" EquivalenciaDR="1.0000" NumParcialidad="2" ImpSaldoAnt="300.00" ImpPagado="100.00" ImpSaldoInsoluto="200.00"/>
+      </pago20:Pago>
+      <pago20:Pago FechaPago="2024-03-15T11:45:00" FormaDePagoP="03" MonedaP="MXN" Monto="20000.00">
+        <pago20:DoctoRelacionado IdDocumento="F0E1D2C3-B4A5-4698-7C6D-5E4F3A2B1C0D" MonedaDR="MXN" NumParcialidad="1" ImpSaldoAnt="58000.00" ImpPagado="20000.00" ImpSaldoInsoluto="38000.00"/>
+        <pago20:DoctoRelacionado IdDocumento="5A6B7C8D-9E0F-4A1B-8C2D-3E4F5A6B7C8D" MonedaDR="MXN" NumParcialidad="1" ImpSaldoAnt="1044.00" ImpPagado="1044.00" ImpSaldoInsoluto="0.00"/>
+      </pago20:Pago>
+    </pago20:Pagos>
+  </cfdi:Complemento>
+  <cfdi:Complemento>
+    <tfd:TimbreFiscalDigital Version="1.1" UUID="B2C3D4E5-F6A7-4B8C-9D0E-1F2A3B4C5D6E" FechaTimbrado="2024-03-15T12:05:00" RfcProvCertif="SAT970701NX3" SelloCFD="U2VsbG9DRkQ=" NoCertificadoSAT="20001000000300022323" SelloSAT="U2VsbG9TQVQ="/>
+  </cfdi:Complemento>
+</cfdi:Comprobante>

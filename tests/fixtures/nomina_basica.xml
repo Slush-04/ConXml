@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" xmlns:nomina12="http://www.sat.gob.mx/nomina12" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sat.gob.mx/cfd/4 http://www.sat.gob.mx/sitio_internet/cfd/4/cfdv40.xsd http://www.sat.gob.mx/nomina12 http://www.sat.gob.mx/sitio_internet/cfd/nomina/nomina12.xsd" Version="4.0" Serie="NOM" Folio="45" Fecha="2026-07-15T14:41:21" Sello="U2VsbG8gZGUgcHJ1ZWJh" NoCertificado="00001000000723116192" Certificado="Q2VydGlmaWNhZG8=" SubTotal="5434.44" Moneda="MXN" Total="5434.44" TipoDeComprobante="N" Exportacion="01" MetodoPago="PUE" LugarExpedicion="24000">
+  <cfdi:Emisor Rfc="CCP770514RQ6" Nombre="COLEGIO DE CONTADORES PUBLICOS DE CAMPECHE AC" RegimenFiscal="601"/>
+  <cfdi:Receptor Rfc="GAGE6707219A1" Nombre="GARCIA GOMEZ ENRIQUE" DomicilioFiscalReceptor="24000" RegimenFiscalReceptor="605" UsoCFDI="CN01"/>
+  <cfdi:Conceptos>
+    <cfdi:Concepto ClaveProdServ="84111505" Cantidad="1" ClaveUnidad="ACT" Descripcion="Pago de nomina" ValorUnitario="5434.44" Importe="5434.44" ObjetoImp="01"/>
+  </cfdi:Conceptos>
+  <cfdi:Complemento>
+    <nomina12:Nomina Version="1.2" TipoNomina="O" FechaPago="2026-07-15" FechaInicialPago="2026-07-01" FechaFinalPago="2026-07-15" NumDiasPagados="15.000" TotalPercepciones="5434.44" TotalDeducciones="198.42" TotalOtrosPagos="0.00">
+      <nomina12:Emisor RegistroPatronal="A1023608108"/>
+      <nomina12:Receptor Curp="GAGE670721HYNMRR00" NumSeguridadSocial="82056705013" FechaInicioRelLaboral="2024-12-16" Antigüedad="P82W" TipoContrato="01" Sindicalizado="No" TipoJornada="01" TipoRegimen="02" NumEmpleado="07" Departamento="Administración" Puesto="Auxiliar de mantenimiento" RiesgoPuesto="1" PeriodicidadPago="04" SalarioBaseCotApor="335.30" SalarioDiarioIntegrado="315.04" ClaveEntFed="CAM"/>
+      <nomina12:Percepciones TotalSueldos="5434.44" TotalGravado="4961.88" TotalExento="472.56">
+        <nomina12:Percepcion TipoPercepcion="001" Clave="001" Concepto="Sueldo" ImporteGravado="4725.60" ImporteExento="0.00"/>
+        <nomina12:Percepcion TipoPercepcion="019" Clave="004" Concepto="Horas extras" ImporteGravado="236.28" ImporteExento="472.56">
+          <nomina12:HorasExtra Dias="2" TipoHoras="01" HorasExtra="9" ImportePagado="708.84"/>
+        </nomina12:Percepcion>
+      </nomina12:Percepciones>
+      <nomina12:Deducciones TotalImpuestosRetenidos="98.42">
+        <nomina12:Deduccion TipoDeduccion="002" Clave="045" Concepto="ISR" Importe="98.42"/>
+        <nomina12:Deduccion TipoDeduccion="001" Clave="001" Concepto="IMSS" Importe="100.00"/>
+      </nomina12:Deducciones>
+      <nomina12:OtrosPagos>
+        <nomina12:OtroPago TipoOtroPago="002" Clave="035" Concepto="Subsidio al empleo" Importe="0.00">
+          <nomina12:SubsidioAlEmpleo SubsidioCausado="264.30"/>
+        </nomina12:OtroPago>
+      </nomina12:OtrosPagos>
+    </nomina12:Nomina>
+    <tfd:TimbreFiscalDigital Version="1.1" UUID="7F8E9A2B-3C4D-4E5F-8A9B-0C1D2E3F4A5B" FechaTimbrado="2026-07-15T14:42:00" RfcProvCertif="SAT970701NX3" SelloCFD="U2VsbG9DRkQ=" NoCertificadoSAT="20001000000300022323" SelloSAT="U2VsbG9TQVQ="/>
+  </cfdi:Complemento>
+</cfdi:Comprobante>
