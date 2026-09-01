@@ -1,0 +1,60 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# Virtual Environments
+.venv*/
+venv/
+env/
+ENV/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Real / sensitive data & reports
+3/
+data/muestra/
+data/salidas/
+data/comparacion/
+data/catalogo.db
+*.xlsx
+*.xls
+*.db
+*.sqlite
+*.sqlite3
+
+# Ignore all real CFDI XMLs except synthetic test fixtures
+*.xml
+!tests/fixtures/*.xml
+
+# Secrets, keys, certificates, environment files
+*.env
+.env*
+*.key
+*.cer
+*.pfx
+*.p12
+*.pem
+
+# Operating System & Editor artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
+# PyInstaller temporary debug specs (keep main conxml.spec)
+conxml-*.spec

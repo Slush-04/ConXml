@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sat.gob.mx/cfd/4 http://www.sat.gob.mx/sitio_internet/cfd/4/cfdv40.xsd" Version="4.0" Serie="A" Folio="125" Fecha="2024-02-10T14:30:00" Sello="U2VsbG8=" NoCertificado="30001000000400002334" Certificado="Q2VydA==" SubTotal="1000.00" Descuento="100.00" Moneda="MXN" Total="1044.00" TipoDeComprobante="I" Exportacion="01" MetodoPago="PUE" FormaPago="04" LugarExpedicion="45000">
+  <cfdi:Emisor Rfc="EKU9003173C9" Nombre="EMPRESA DE PRUEBA SA DE CV" RegimenFiscal="601"/>
+  <cfdi:Receptor Rfc="XAXX010101000" Nombre="CLIENTE DE PRUEBA" DomicilioFiscalReceptor="45000" RegimenFiscalReceptor="616" UsoCFDI="G03"/>
+  <cfdi:Conceptos>
+    <cfdi:Concepto ClaveProdServ="01010101" NoIdentificacion="P002" Cantidad="1" ClaveUnidad="H87" Unidad="Pieza" Descripcion="Producto con descuento" ValorUnitario="1000.00" Importe="1000.00" Descuento="100.00" ObjetoImp="02">
+      <cfdi:Impuestos>
+        <cfdi:Traslados>
+          <cfdi:Traslado Base="900.00" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.160000" Importe="144.00"/>
+        </cfdi:Traslados>
+      </cfdi:Impuestos>
+    </cfdi:Concepto>
+  </cfdi:Conceptos>
+  <cfdi:Impuestos TotalImpuestosTrasladados="144.00">
+    <cfdi:Traslados>
+      <cfdi:Traslado Base="900.00" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.160000" Importe="144.00"/>
+    </cfdi:Traslados>
+  </cfdi:Impuestos>
+  <cfdi:Complemento>
+    <tfd:TimbreFiscalDigital Version="1.1" UUID="5A6B7C8D-9E0F-4A1B-8C2D-3E4F5A6B7C8D" FechaTimbrado="2024-02-10T14:35:00" RfcProvCertif="SAT970701NX3" SelloCFD="U2VsbG9DRkQ=" NoCertificadoSAT="20001000000300022323" SelloSAT="U2VsbG9TQVQ="/>
+  </cfdi:Complemento>
+</cfdi:Comprobante>
