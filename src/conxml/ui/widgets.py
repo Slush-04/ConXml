@@ -222,7 +222,7 @@ class Encabezado(ctk.CTkFrame):
             font=(th.FUENTE, th.TAM_BODY),
         ).pack(anchor="w", pady=(2, 0))
         sep = ctk.CTkFrame(self, height=1, fg_color=th.BORDE)
-        sep.pack(fill="x", pady=(10, 0))
+        sep.pack(fill="x", pady=(6, 0))
 
 
 class FilaEtiquetada(ctk.CTkFrame):

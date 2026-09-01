@@ -9,6 +9,7 @@ import customtkinter as ctk
 
 from conxml.catalog.db import Catalogo
 from conxml.config import Config
+from conxml.sat.estatus import ConfigLote
 from conxml.ui import theme as th
 from conxml.ui.widgets import BotonPrimario, BotonSecundario, Encabezado, PanelCard, ResumenOperacion
 
@@ -75,7 +76,48 @@ class PantallaAjustes(ctk.CTkFrame):
         )
         self.btn_vaciar.pack(side="left")
 
-        # Tarjeta 2: Estado de la base de datos
+        # Tarjeta 2: Velocidad de validación SAT
+        card_sat = PanelCard(contenedor)
+        card_sat.pack(fill="x", pady=(0, 16))
+
+        content_sat = ctk.CTkFrame(card_sat, fg_color="transparent")
+        content_sat.pack(fill="both", expand=True, padx=20, pady=18)
+
+        ctk.CTkLabel(
+            content_sat,
+            text="VELOCIDAD DE VALIDACIÓN ANTE EL SAT",
+            text_color=th.TEXTO_SECUNDARIO,
+            font=(th.FUENTE, th.TAM_NOTA, "bold"),
+        ).pack(anchor="w", pady=(0, 10))
+
+        self.velocidad_sat = tk.StringVar(value="Rápida (8 hilos)")
+        self.seg_velocidad = ctk.CTkSegmentedButton(
+            content_sat,
+            values=["Rápida (8 hilos)", "Moderada (4 hilos)", "Conservadora (1 hilo)"],
+            variable=self.velocidad_sat,
+            fg_color=th.FONDO_ENTRADA,
+            selected_color=th.PRIMARIO,
+            selected_hover_color=th.PRIMARIO_HOVER,
+            unselected_color=th.FONDO_TARJETA,
+            unselected_hover_color=th.PRIMARIO_FONDO,
+            text_color=th.TEXTO,
+            font=(th.FUENTE, th.TAM_BODY, "bold"),
+            height=32,
+        )
+        self.seg_velocidad.pack(anchor="w", pady=(0, 10))
+
+        ctk.CTkLabel(
+            content_sat,
+            text="• Rápida (Recomendado): ejecuta 8 consultas simultáneas con reutilización de conexiones (máxima velocidad).\n"
+                 "• Moderada: ejecuta 4 consultas simultáneas en paralelo.\n"
+                 "• Conservadora: consulta 1 comprobante a la vez con pausa de 2 segundos.",
+            text_color=th.TEXTO_SECUNDARIO,
+            font=(th.FUENTE, th.TAM_NOTA),
+            wraplength=700,
+            justify="left",
+        ).pack(anchor="w")
+
+        # Tarjeta 3: Estado de la base de datos
         card_info = PanelCard(contenedor)
         card_info.pack(fill="x", pady=(0, 16))
 
@@ -156,3 +198,13 @@ class PantallaAjustes(ctk.CTkFrame):
             self.app.registro("Catálogo vaciado manualmente desde Ajustes.")
         except Exception as exc:
             self.resumen.mostrar(f"Error al vaciar catálogo: {exc}", tono="rojo")
+
+    def obtener_config_sat(self) -> ConfigLote:
+        """Devuelve la configuración de lote SAT según la selección de velocidad."""
+        val = self.velocidad_sat.get()
+        if "Moderada" in val:
+            return ConfigLote(max_workers=4, delay_segundos=0.0)
+        elif "Conservadora" in val:
+            return ConfigLote(max_workers=1, delay_segundos=2.0)
+        return ConfigLote(max_workers=8, delay_segundos=0.0)
+

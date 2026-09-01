@@ -128,3 +128,41 @@ def test_lote_solo_cliente_seleccionado(tmp_path, monkeypatch):
     assert res.consultados == 4
     pendientes_cliente1 = list(catalogo.consulta(cliente="1", sin_estatus=True))
     assert len(pendientes_cliente1) == 3  # el cliente 1 no fue tocado
+
+
+def test_lote_concurrente_multi_hilo(tmp_path, monkeypatch):
+    catalogo = _poblada(tmp_path)
+    total_esperado = sum(1 for _ in catalogo.consulta())
+    estados = {
+        f["uuid"]: ResultadoEstatus(
+            estado="Cancelado" if f["tipo_comprobante"] == "E" else "Vigente"
+        )
+        for f in catalogo.consulta()
+    }
+    llamadas = []
+    progresos = []
+
+    def fake(**kwargs):
+        llamadas.append(kwargs["uuid"])
+        return estados[kwargs["uuid"]]
+
+    monkeypatch.setattr("conxml.sat.estatus.consultar", fake)
+
+    config = ConfigLote(max_workers=4, delay_segundos=0)
+    res = consultar_lote(
+        catalogo,
+        config=config,
+        progreso=lambda actual, total: progresos.append((actual, total)),
+    )
+
+    assert res.consultados == total_esperado
+    assert res.vigentes == 7
+    assert res.cancelados == 1
+    assert res.fallos == 0
+    assert len(llamadas) == total_esperado
+    assert len(progresos) == total_esperado
+    assert progresos[-1] == (total_esperado, total_esperado)
+
+    # Verificar que no quedan comprobantes sin estatus en la BD
+    sin_estatus = list(catalogo.consulta(sin_estatus=True))
+    assert len(sin_estatus) == 0

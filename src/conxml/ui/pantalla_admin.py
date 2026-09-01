@@ -348,10 +348,10 @@ class PanelResumenTotales(PanelCard):
         self._filas: list[dict] = []
 
         contenedor = ctk.CTkFrame(self, fg_color="transparent")
-        contenedor.pack(fill="x", expand=True, padx=16, pady=10)
+        contenedor.pack(fill="x", expand=True, padx=12, pady=6)
 
         header = ctk.CTkFrame(contenedor, fg_color="transparent")
-        header.pack(fill="x", pady=(0, 8))
+        header.pack(fill="x", pady=(0, 4))
 
         ctk.CTkLabel(
             header, text="RESUMEN DE TOTALES", text_color=th.TEXTO_SECUNDARIO,
@@ -471,10 +471,10 @@ class PanelResumenPagos(PanelCard):
     def __init__(self, parent: ctk.CTkFrame) -> None:
         super().__init__(parent)
         contenedor = ctk.CTkFrame(self, fg_color="transparent")
-        contenedor.pack(fill="x", expand=True, padx=16, pady=10)
+        contenedor.pack(fill="x", expand=True, padx=12, pady=6)
 
         header = ctk.CTkFrame(contenedor, fg_color="transparent")
-        header.pack(fill="x", pady=(0, 8))
+        header.pack(fill="x", pady=(0, 4))
 
         ctk.CTkLabel(
             header, text="RESUMEN DE CONCILIACIÓN DE PAGOS", text_color=th.TEXTO_SECUNDARIO,
@@ -597,7 +597,7 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._gestores: dict[str, GestorColumnas] = {}
 
         contenedor = ctk.CTkFrame(self, fg_color="transparent")
-        contenedor.pack(fill="both", expand=True, padx=32, pady=24)
+        contenedor.pack(fill="both", expand=True, padx=16, pady=12)
         contenedor.columnconfigure(1, weight=1)
         contenedor.rowconfigure(5, weight=1)
 
@@ -631,7 +631,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             boton_secundario="➕ Añadir",
             placeholder_text="Ruta o rutas separadas por punto y coma (ej. C:\\Carpeta1; C:\\Carpeta2)",
         )
-        self._fila_carpeta.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(24, 6))
+        self._fila_carpeta.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(12, 4))
 
         ctk.CTkLabel(
             contenedor, text="Cliente (vacío = todos):", text_color=th.TEXTO,
@@ -664,11 +664,11 @@ class PantallaAdministracion(ctk.CTkFrame):
             self._totales_panel = PanelResumenPagos(contenedor)
         else:
             self._totales_panel = PanelResumenTotales(contenedor)
-        self._totales_panel.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(12, 0))
+        self._totales_panel.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(6, 0))
 
         # Barra de herramientas de la tabla: selector de vista (pagos) + columnas
         barra_tabla = ctk.CTkFrame(contenedor, fg_color="transparent")
-        barra_tabla.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(12, 0))
+        barra_tabla.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(6, 0))
 
         self._btn_columnas = BotonSecundario(barra_tabla, "⚙ Columnas", self._abrir_columnas)
         self._btn_columnas.pack(side="right")
@@ -695,7 +695,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             self._seg_vista.pack(side="left", padx=(8, 0))
 
         marco_tabla = PanelCard(contenedor)
-        marco_tabla.grid(row=5, column=0, columnspan=3, sticky="nsew", pady=(8, 0))
+        marco_tabla.grid(row=5, column=0, columnspan=3, sticky="nsew", pady=(4, 0))
         marco_tabla.rowconfigure(0, weight=1)
         marco_tabla.columnconfigure(0, weight=1)
 
@@ -722,7 +722,7 @@ class PantallaAdministracion(ctk.CTkFrame):
 
         # Fila de acciones inferiores
         marco_acciones = ctk.CTkFrame(contenedor, fg_color="transparent")
-        marco_acciones.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(16, 0))
+        marco_acciones.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(8, 0))
 
         self._btn_validar = BotonPrimario(marco_acciones, "Validar estatus", self._validar)
         self._btn_validar.pack(side="left")
@@ -748,7 +748,7 @@ class PantallaAdministracion(ctk.CTkFrame):
 
         # Resumen de operaciones
         self._resumen = ResumenOperacion(contenedor)
-        self._resumen.grid(row=7, column=0, columnspan=3, sticky="ew", pady=(16, 0))
+        self._resumen.grid(row=7, column=0, columnspan=3, sticky="ew", pady=(8, 0))
 
         # Progreso
         self._progreso = ctk.CTkProgressBar(
@@ -932,14 +932,19 @@ class PantallaAdministracion(ctk.CTkFrame):
     def _validar(self) -> None:
         cliente = self._cliente_cargado or self._cliente.get().strip() or None
         force = self._force.get()
-        config = ConfigLote(delay_segundos=2.0)
+        pantalla_ajustes = getattr(self.app, "_pantallas", {}).get("ajustes")
+        if pantalla_ajustes and hasattr(pantalla_ajustes, "obtener_config_sat"):
+            config = pantalla_ajustes.obtener_config_sat()
+        else:
+            config = ConfigLote(max_workers=8, delay_segundos=0.0)
+
         self._resumen.mostrar("Consultando estatus SAT…", detalle="Preparando la consulta.")
         self._progreso.set(0)
         self._mostrar_detalles_operacion()
         self.app.ejecutar(
             lambda progreso: self._run_validar(cliente, force, config, progreso),
             lambda res: self._presentar_validar(res),
-            "Consultando estatus SAT (puede tardar varios minutos)",
+            f"Consultando estatus SAT ({config.max_workers} hilos)",
             con_progreso=True,
         )
 
