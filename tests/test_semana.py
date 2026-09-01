@@ -67,8 +67,11 @@ def test_carpeta_y_periodo(tmp_path):
     assert carpeta.is_dir() and carpeta.name == "07"
     assert periodo_rango("2026-02") == ("2026-02-01", "2026-02-28")
     assert periodo_rango("2026-08") == ("2026-08-01", "2026-08-31")
-    assert mes_actual() >= "2026-08"
-    assert mes_anterior() == "2026-07"
+    from datetime import datetime
+    hoy = datetime.now()
+    esperado_ant = f"{hoy.year - 1}-12" if hoy.month == 1 else f"{hoy.year}-{hoy.month - 1:02d}"
+    assert mes_actual() == hoy.strftime("%Y-%m")
+    assert mes_anterior() == esperado_ant
 
 
 def test_config_guardar_cargar(tmp_path):

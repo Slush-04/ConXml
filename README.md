@@ -145,6 +145,32 @@ conxml semana
 
 ---
 
+## 📦 Compilación de Ejecutables Independientes
+
+Puedes compilar ConXml como aplicación nativa independiente sin necesidad de instalar Python en los equipos de destino:
+
+### 🍎 En macOS (`ConXml.app` y `conxml-cli`)
+Ejecuta el script de compilación para Mac:
+```bash
+./scripts/build_mac.sh
+```
+El resultado se generará en la carpeta `dist/`:
+- **`ConXml.app`**: Aplicación nativa de macOS (se puede mover a `/Applications`).
+- **`conxml-cli`**: Binario ejecutable para Terminal.
+- *Ubicación de datos*: En macOS, los datos del catálogo se gestionan de forma segura en `~/Library/Application Support/ConXml/`.
+
+### 🪟 En Windows (`conxml.exe` y `conxml-cli.exe`)
+Ejecuta el script de PowerShell:
+```powershell
+.\scripts\build_exe.ps1
+```
+El resultado se generará en la carpeta `dist\`:
+- **`conxml.exe`**: Aplicación gráfica portátil.
+- **`conxml-cli.exe`**: Ejecutable de línea de comandos.
+- *Ubicación de datos*: En Windows portátil, crea y lee la carpeta `data\` junto al `.exe`.
+
+---
+
 ## 🧪 Pruebas Unitarias
 
 Para ejecutar la suite de pruebas unitarias:
