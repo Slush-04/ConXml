@@ -161,6 +161,7 @@ class Catalogo:
         self.ruta = ruta
         ruta.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(ruta))
+        self.conn.row_factory = sqlite3.Row  # una sola vez (antes se mutaba por método)
         try:
             self.conn.execute("PRAGMA journal_mode=WAL")
         except sqlite3.OperationalError:
@@ -417,7 +418,6 @@ class Catalogo:
         sin_estatus: bool = False,
     ) -> Iterator[sqlite3.Row]:
         where, params = self._filtros_consulta(cliente, desde, hasta, tipo, sin_estatus)
-        self.conn.row_factory = sqlite3.Row
         return self.conn.execute(
             "SELECT * FROM comprobantes" + where + " ORDER BY fecha", params
         )
@@ -442,11 +442,9 @@ class Catalogo:
             sql += " AND c.cliente = ?"
             params.append(cliente)
         sql += " ORDER BY p.fecha_pago"
-        self.conn.row_factory = sqlite3.Row
         return self.conn.execute(sql, params)
 
     def consultar_doctos(self, pago_id: int) -> list[sqlite3.Row]:
-        self.conn.row_factory = sqlite3.Row
         return self.conn.execute(
             "SELECT * FROM doctos_relacionados WHERE pago_id = ? ORDER BY num_parcialidad",
             (pago_id,),
@@ -456,7 +454,6 @@ class Catalogo:
         """Trae doctos de muchos pagos en 1 query (evita N+1)."""
         if not pago_ids:
             return {}
-        self.conn.row_factory = sqlite3.Row
         marcadores = ",".join("?" for _ in pago_ids)
         filas = self.conn.execute(
             f"SELECT * FROM doctos_relacionados WHERE pago_id IN ({marcadores}) "

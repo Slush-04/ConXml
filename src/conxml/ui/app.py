@@ -335,7 +335,7 @@ class ConXmlApp(ctk.CTkFrame):
     def actualizar_resumen(self) -> None:
         self._pantallas["resumen"].actualizar_metricas()
 
-    def registro(self, texto: str) -> None:
+    def registro(self, texto: str, max_lineas: int = 2000) -> None:
         self._registro.configure(state="normal")
         if texto.startswith("==>"):
             self._registro.insert("end", texto + "\n", "comando")
@@ -346,16 +346,18 @@ class ConXmlApp(ctk.CTkFrame):
             self._registro.insert("end", texto + "\n", "detalle")
         else:
             self._registro.insert("end", texto + "\n")
+        # Acota el registro para no crecer sin límite en validaciones masivas
+        total = int(self._registro.index("end-1c").split(".")[0])
+        if total > max_lineas:
+            self._registro.delete("1.0", f"{total - max_lineas}.0")
         self._registro.see("end")
         self._registro.configure(state="disabled")
 
     def ejecutar(self, fn, al_terminar, texto: str, con_progreso: bool = False) -> bool:
         if self._ocupada:
-            messagebox.showinfo(
-                "Operación en curso",
-                "Espera a que termine la operación actual antes de lanzar otra.",
-                parent=self,
-            )
+            # Sin modal: en smoke/headless no hay quien lo cierre y en uso real
+            # interrumpe el flujo. Se avisa en el registro y se ignora.
+            self.registro("  operación omitida: hay otra en curso")
             return False
         self._ocupada = True
         for pantalla in self._pantallas.values():

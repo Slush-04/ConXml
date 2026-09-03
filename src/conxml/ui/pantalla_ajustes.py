@@ -43,7 +43,7 @@ class PantallaAjustes(ctk.CTkFrame):
             font=(th.FUENTE, th.TAM_NOTA, "bold"),
         ).pack(anchor="w", pady=(0, 10))
 
-        self.limpiar_al_leer = tk.BooleanVar(value=True)
+        self.limpiar_al_leer = tk.BooleanVar(value=False)
         self.chk_limpiar = ctk.CTkCheckBox(
             content_op,
             text="Limpiar catálogo de trabajo automáticamente al leer carpetas",

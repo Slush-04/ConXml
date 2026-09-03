@@ -179,7 +179,8 @@ def procesar_semana(
         return resultado
     anio, mes = config.periodo.split("-")
     salidas = Path(db_path).parent / "salidas"
-    orden = _ordenar_por_pendientes(config, db_path)
+    with Catalogo(db_path) as catalogo:
+        orden = _ordenar_por_pendientes(config, catalogo)
 
     for posicion, etiqueta in enumerate(orden):
         if debe_detenerse is not None and debe_detenerse():
@@ -200,14 +201,25 @@ def procesar_semana(
     return resultado
 
 
-def _ordenar_por_pendientes(config: ConfigSemana, db_path: str | Path) -> list[str]:
-    """Clientes con más folios por validar primero (el orden sugerido)."""
+def _ordenar_por_pendientes(config: ConfigSemana, catalogo_o_path) -> list[str]:
+    """Clientes con más folios por validar primero.
+
+    Acepta un Catalogo abierto (reutiliza la conexión) o un path (compat).
+    """
+    from conxml.catalog.db import Catalogo as _Catalogo
+
+    if isinstance(catalogo_o_path, _Catalogo):
+        return _ordenados(config, catalogo_o_path)
+    with _Catalogo(catalogo_o_path) as catalogo:
+        return _ordenados(config, catalogo)
+
+
+def _ordenados(config: ConfigSemana, catalogo) -> list[str]:
     pendientes: dict[str, int] = {}
-    with Catalogo(db_path) as catalogo:
-        for etiqueta in config.clientes:
-            pendientes[etiqueta] = catalogo.contar_consulta(
-                cliente=etiqueta, sin_estatus=not config.forzar_revalidacion
-            )
+    for etiqueta in config.clientes:
+        pendientes[etiqueta] = catalogo.contar_consulta(
+            cliente=etiqueta, sin_estatus=not config.forzar_revalidacion
+        )
     return sorted(config.clientes, key=lambda e: pendientes.get(e, 0), reverse=True)
 
 
