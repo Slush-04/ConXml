@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from conxml.catalog.db import Catalogo
-from conxml.cfdi import CFDIParseError, parse_comprobante, parse_pagos
+from conxml.cfdi import CFDIParseError, parse_pagos
+from conxml.cfdi.parser import parse_comprobante_con_arbol
 
 
 @dataclass
@@ -42,25 +43,28 @@ def importar_carpetas(
     if limpiar_antes:
         catalogo.limpiar()
 
-    if isinstance(carpetas, (str, Path)):
-        lista_carpetas = [Path(carpetas)]
-    else:
-        lista_carpetas = [Path(p) for p in carpetas]
+    match carpetas:
+        case str() | Path():
+            lista_carpetas = [Path(carpetas)]
+        case _:
+            lista_carpetas = [Path(p) for p in carpetas]
 
     resultado = ResultadoImportacion()
     archivos: list[Path] = []
     for c in lista_carpetas:
         p_carpeta = Path(c)
-        if p_carpeta.is_dir():
-            archivos.extend(p for p in p_carpeta.rglob("*") if p.is_file() and p.suffix.lower() == ".xml")
+        if not p_carpeta.is_dir():
+            resultado.detalle_errores.append(f"carpeta no encontrada: {p_carpeta}")
+            continue
+        archivos.extend(p_carpeta.rglob("*.xml"))
 
     for archivo in sorted(set(archivos)):
         resultado.procesados += 1
         try:
-            comprobante = parse_comprobante(archivo)
+            comprobante, arbol = parse_comprobante_con_arbol(archivo)
             if comprobante.uuid is None:
                 raise CFDIParseError(archivo, "sin timbre fiscal (UUID no encontrado)")
-            pagos = parse_pagos(comprobante)
+            pagos = parse_pagos(comprobante, arbol)
             estado = catalogo.insert_comprobante(cliente, comprobante, pagos)
             if estado == "inserted":
                 resultado.insertados += 1
@@ -81,7 +85,9 @@ def importar_carpetas(
 
 def _registrar_error(catalogo: Catalogo, archivo: Path, mensaje: str) -> None:
     """Registra el error en BD sin que un fallo de escritura aborte el lote."""
+    import logging
+
     try:
         catalogo.registrar_error(archivo, mensaje)
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("conxml.importer").warning("no se pudo registrar %s: %s", archivo, exc)

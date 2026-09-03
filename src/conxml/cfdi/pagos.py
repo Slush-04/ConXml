@@ -15,15 +15,16 @@ from pathlib import Path
 
 from lxml import etree
 
+from conxml.cfdi._common import NSMAP, PARSER as _PARSER, _dec, _fecha, _int, cargar_arbol
 from conxml.cfdi.models import Comprobante
-from conxml.cfdi.parser import NSMAP, CFDIParseError, _dec, _fecha
+from conxml.cfdi.parser import CFDIParseError
 
 PAGOS_NS = "http://www.sat.gob.mx/Pagos20"
+# Pagos 1.0 legacy (tolerante: algunos REP viejos aún circulan)
+PAGOS_NS_10 = "http://www.sat.gob.mx/Pagos"
 
-_PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
 
-
-@dataclass
+@dataclass(slots=True)
 class DoctoRelacionado:
     uuid: str
     moneda: str
@@ -36,7 +37,7 @@ class DoctoRelacionado:
     equivalencia_dr: Decimal | None = None
 
 
-@dataclass
+@dataclass(slots=True)
 class Pago:
     fecha: datetime
     forma_pago: str
@@ -51,29 +52,21 @@ class Pago:
     doctos_relacionados: list[DoctoRelacionado] = field(default_factory=list)
 
 
-def _int(value: str | None) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        return None
+def _int(value: str | None) -> int | None:  # compat: ahora en _common
+    from conxml.cfdi._common import entero
+
+    return entero(value)
 
 
-def parse_pagos(comprobante: Comprobante) -> list[Pago]:
-    """Extrae los pagos (y sus documentos relacionados) del CFDI dado.
-
-    Devuelve una lista vacía si el comprobante no trae complemento de pagos.
-    """
-    ruta: Path = comprobante.ruta
-    try:
-        tree = etree.parse(str(ruta), parser=_PARSER)
-    except etree.XMLSyntaxError as exc:
-        raise CFDIParseError(ruta, f"no es un XML válido: {exc}") from exc
-
-    nsmap = {**NSMAP, "p20": PAGOS_NS}
-    root = tree.getroot()
-    pagos_el = root.xpath("cfdi:Complemento/p20:Pagos/p20:Pago", namespaces=nsmap)
+def parse_pagos_desde_raiz(root: etree._Element) -> list[Pago]:
+    """Extrae pagos desde una raíz ya parseada (sin re-leer disco)."""
+    for ns in (PAGOS_NS, PAGOS_NS_10):
+        nsmap = {**NSMAP, "p20": ns}
+        pagos_el = root.xpath("cfdi:Complemento/p20:Pagos/p20:Pago", namespaces=nsmap)
+        if pagos_el:
+            break
+    else:
+        return []
 
     resultados: list[Pago] = []
     for el in pagos_el:
@@ -105,3 +98,14 @@ def parse_pagos(comprobante: Comprobante) -> list[Pago]:
             )
         resultados.append(pago)
     return resultados
+
+
+def parse_pagos(
+    comprobante: Comprobante, arbol: etree._ElementTree | None = None
+) -> list[Pago]:
+    """Extrae los pagos del CFDI dado. Si `arbol` viene, no relee el disco."""
+    if arbol is not None:
+        return parse_pagos_desde_raiz(arbol.getroot())
+    ruta: Path = comprobante.ruta
+    tree = cargar_arbol(ruta)
+    return parse_pagos_desde_raiz(tree.getroot())

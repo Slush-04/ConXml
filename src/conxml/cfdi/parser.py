@@ -12,13 +12,20 @@ from pathlib import Path
 
 from lxml import etree
 
+from conxml.cfdi._common import (
+    CFDI_NS as _COMMON_CFDI_NS,
+    NSMAP,
+    PARSER as _PARSER,
+    TFD_NS as _COMMON_TFD_NS,
+    _dec,
+    _fecha,
+    _primero,
+    cargar_arbol,
+)
 from conxml.cfdi.models import Comprobante, Retencion, Traslado
 
-CFDI_NS = "http://www.sat.gob.mx/cfd/4"
-TFD_NS = "http://www.sat.gob.mx/TimbreFiscalDigital"
-NSMAP = {"cfdi": CFDI_NS, "tfd": TFD_NS}
-
-_PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
+CFDI_NS = _COMMON_CFDI_NS
+TFD_NS = _COMMON_TFD_NS
 
 
 class CFDIParseError(Exception):
@@ -51,50 +58,42 @@ def _fecha(value: str | None) -> datetime | None:
         return None
 
 
-def _parse_traslados(el_impuestos: etree._Element | None) -> list[Traslado]:
+def _parse_impuestos(el_impuestos: etree._Element | None, nodo: str, clase):
+    """Genérico para Traslados/Retenciones (antes dos funciones idénticas)."""
     if el_impuestos is None:
         return []
+    plural = {"Traslado": "Traslados", "Retencion": "Retenciones"}[nodo]
     return [
-        Traslado(
+        clase(
             base=_dec(el.get("Base")),
             impuesto=el.get("Impuesto", ""),
             tipo_factor=el.get("TipoFactor", ""),
             tasa_o_cuota=_dec(el.get("TasaOCuota")),
             importe=_dec(el.get("Importe")),
         )
-        for el in el_impuestos.xpath("cfdi:Traslados/cfdi:Traslado", namespaces=NSMAP)
+        for el in el_impuestos.xpath(
+            f"cfdi:{plural}/cfdi:{nodo}", namespaces=NSMAP
+        )
     ]
+
+
+def _parse_traslados(el_impuestos: etree._Element | None) -> list[Traslado]:
+    return _parse_impuestos(el_impuestos, "Traslado", Traslado)
 
 
 def _parse_retenciones(el_impuestos: etree._Element | None) -> list[Retencion]:
-    if el_impuestos is None:
-        return []
-    return [
-        Retencion(
-            base=_dec(el.get("Base")),
-            impuesto=el.get("Impuesto", ""),
-            tipo_factor=el.get("TipoFactor", ""),
-            tasa_o_cuota=_dec(el.get("TasaOCuota")),
-            importe=_dec(el.get("Importe")),
-        )
-        for el in el_impuestos.xpath("cfdi:Retenciones/cfdi:Retencion", namespaces=NSMAP)
-    ]
+    return _parse_impuestos(el_impuestos, "Retencion", Retencion)
 
 
-def parse_comprobante(ruta: str | Path) -> Comprobante:
-    """Parsea un archivo XML de CFDI 4.0 y devuelve su modelo tipado."""
-    path = Path(ruta)
-    try:
-        tree = etree.parse(str(path), parser=_PARSER)
-    except etree.XMLSyntaxError as exc:
-        raise CFDIParseError(path, f"no es un XML válido: {exc}") from exc
-
-    root = tree.getroot()
+def parse_comprobante_desde_raiz(path: Path, root: etree._Element) -> Comprobante:
     version = root.get("Version")
-    if etree.QName(root).localname != "Comprobante" or version != "4.0":
-        raise UnsupportedVersionError(
-            path, f"solo se soporta CFDI 4.0 (se recibió '{version}')"
-        )
+    match (etree.QName(root).localname, version):
+        case ("Comprobante", "4.0"):
+            pass
+        case _:
+            raise UnsupportedVersionError(
+                path, f"solo se soporta CFDI 4.0 (se recibió '{version}')"
+            )
 
     emisor = root.find("cfdi:Emisor", NSMAP)
     receptor = root.find("cfdi:Receptor", NSMAP)
@@ -148,5 +147,24 @@ def parse_comprobante(ruta: str | Path) -> Comprobante:
     )
 
 
-def _primero(valores: list[str]) -> str | None:
-    return valores[0] if valores else None
+def parse_comprobante(ruta: str | Path) -> Comprobante:
+    """Parsea un archivo XML de CFDI 4.0 y devuelve su modelo tipado."""
+    path = Path(ruta)
+    tree = cargar_arbol(path)
+    return parse_comprobante_desde_raiz(path, tree.getroot())
+
+
+def parse_comprobante_con_arbol(ruta: str | Path) -> tuple[Comprobante, etree._ElementTree]:
+    """Parsea una sola vez y devuelve (comprobante, árbol) para reutilizar.
+
+    Evita el doble I/O que hacían parse_pagos/parse_nomina al releer el archivo.
+    """
+    path = Path(ruta)
+    tree = cargar_arbol(path)
+    return parse_comprobante_desde_raiz(path, tree.getroot()), tree
+
+
+def _primero(valores: list[str]) -> str | None:  # compat: ahora en _common
+    from conxml.cfdi._common import primero
+
+    return primero(valores)

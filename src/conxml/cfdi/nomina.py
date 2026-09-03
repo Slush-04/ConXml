@@ -15,12 +15,11 @@ from pathlib import Path
 
 from lxml import etree
 
+from conxml.cfdi._common import NSMAP, PARSER as _PARSER, _dec, _fecha, _int, cargar_arbol
 from conxml.cfdi.models import Comprobante
-from conxml.cfdi.parser import NSMAP, CFDIParseError, _dec, _fecha
+from conxml.cfdi.parser import CFDIParseError
 
 NOMINA_NS = "http://www.sat.gob.mx/nomina12"
-
-_PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
 
 
 @dataclass
@@ -74,13 +73,14 @@ class Nomina:
     deducciones: list[Deduccion] = field(default_factory=list)
 
 
-def _int(value: str | None) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        return None
+def _int(value: str | None) -> int | None:  # compat: ahora en _common
+    from conxml.cfdi._common import entero
+
+    return entero(value)
+
+
+def _attr(nodos: list, nombre: str):
+    return nodos[0].get(nombre) if nodos else None
 
 
 def _parse_horas_extra(percepcion_el: etree._Element, nsmap: dict) -> HorasExtra | None:
@@ -140,19 +140,9 @@ def _parse_deducciones(el: etree._Element | None, nsmap: dict) -> tuple[list[Ded
     return deducciones, _dec(nodo.get("TotalImpuestosRetenidos"))
 
 
-def parse_nomina(comprobante: Comprobante) -> Nomina | None:
-    """Extrae el complemento de nómina del CFDI dado.
-
-    Devuelve None si el comprobante no trae complemento de nómina.
-    """
-    ruta: Path = comprobante.ruta
-    try:
-        tree = etree.parse(str(ruta), parser=_PARSER)
-    except etree.XMLSyntaxError as exc:
-        raise CFDIParseError(ruta, f"no es un XML válido: {exc}") from exc
-
+def parse_nomina_desde_raiz(root: etree._Element) -> Nomina | None:
+    """Extrae nómina desde raíz ya parseada (sin re-leer disco)."""
     nsmap = {**NSMAP, "n12": NOMINA_NS}
-    root = tree.getroot()
     nodos = root.xpath("cfdi:Complemento/n12:Nomina", namespaces=nsmap)
     if not nodos:
         return None
@@ -172,13 +162,13 @@ def parse_nomina(comprobante: Comprobante) -> Nomina | None:
         total_percepciones=_dec(el.get("TotalPercepciones")),
         total_deducciones=_dec(el.get("TotalDeducciones")),
         total_otros_pagos=_dec(el.get("TotalOtrosPagos")),
-        registro_patronal=emisor[0].get("RegistroPatronal") if emisor else None,
-        curp=receptor[0].get("Curp") if receptor else None,
-        num_empleado=receptor[0].get("NumEmpleado") if receptor else None,
-        puesto=receptor[0].get("Puesto") if receptor else None,
-        periodicidad_pago=receptor[0].get("PeriodicidadPago") if receptor else None,
-        salario_base_cot_apor=_dec(receptor[0].get("SalarioBaseCotApor")) if receptor else None,
-        salario_diario_integrado=_dec(receptor[0].get("SalarioDiarioIntegrado")) if receptor else None,
+        registro_patronal=_attr(emisor, "RegistroPatronal"),
+        curp=_attr(receptor, "Curp"),
+        num_empleado=_attr(receptor, "NumEmpleado"),
+        puesto=_attr(receptor, "Puesto"),
+        periodicidad_pago=_attr(receptor, "PeriodicidadPago"),
+        salario_base_cot_apor=_dec(_attr(receptor, "SalarioBaseCotApor")),
+        salario_diario_integrado=_dec(_attr(receptor, "SalarioDiarioIntegrado")),
         total_sueldos=total_sueldos,
         total_gravado=total_gravado,
         total_exento=total_exento,
@@ -186,3 +176,13 @@ def parse_nomina(comprobante: Comprobante) -> Nomina | None:
         percepciones=percepciones,
         deducciones=deducciones,
     )
+
+
+def parse_nomina(
+    comprobante: Comprobante, arbol: etree._ElementTree | None = None
+) -> Nomina | None:
+    """Extrae nómina del CFDI. Si `arbol` viene, no relee el disco."""
+    if arbol is not None:
+        return parse_nomina_desde_raiz(arbol.getroot())
+    tree = cargar_arbol(comprobante.ruta)
+    return parse_nomina_desde_raiz(tree.getroot())

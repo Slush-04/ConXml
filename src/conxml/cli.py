@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import json
+import re
+import signal
+import sys
 from pathlib import Path
 
 from conxml.catalog.db import Catalogo
@@ -22,7 +26,26 @@ from conxml.semana import (
 
 
 def _db_path(args) -> Path:
-    return args.db if hasattr(args, "db") and getattr(args, "db", None) else Config().db_path
+    return getattr(args, "db", None) or Config().db_path
+
+
+def _no_negativo(valor: str) -> float:
+    numero = float(valor)
+    if numero < 0:
+        raise argparse.ArgumentTypeError("debe ser >= 0")
+    return numero
+
+
+def _periodo(valor: str) -> str:
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", valor):
+        raise argparse.ArgumentTypeError("formato AAAA-MM (ej. 2026-07)")
+    return valor
+
+
+def _fecha_dia(valor: str) -> str:
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])", valor):
+        raise argparse.ArgumentTypeError("formato YYYY-MM-DD")
+    return valor
 
 
 def _progreso(actual: int, total: int) -> None:
@@ -44,8 +67,10 @@ def construir_parser() -> argparse.ArgumentParser:
     estatus_p = subs.add_parser("estatus", help="Validar estatus SAT en lote")
     estatus_p.add_argument("--cliente", type=str, default=None)
     estatus_p.add_argument("--force", action="store_true")
-    estatus_p.add_argument("--delay", type=float, default=2.0)
+    estatus_p.add_argument("--delay", type=_no_negativo, default=2.0)
     estatus_p.add_argument("--db", type=Path, default=None)
+    estatus_p.add_argument("--quiet", action="store_true", help="Solo resumen final")
+    estatus_p.add_argument("--json", action="store_true", help="Salida JSON para scripting")
 
     export_p = subs.add_parser("export", help="Generar Excel")
     export_sub = export_p.add_subparsers(dest="formato", required=True)
@@ -53,8 +78,8 @@ def construir_parser() -> argparse.ArgumentParser:
     listado = export_sub.add_parser("listado", help="Listado general de comprobantes")
     listado.add_argument("destino", type=Path, help="Ruta del Excel de salida")
     listado.add_argument("--cliente", type=str, default=None)
-    listado.add_argument("--desde", type=str, default=None, help="YYYY-MM-DD")
-    listado.add_argument("--hasta", type=str, default=None, help="YYYY-MM-DD")
+    listado.add_argument("--desde", type=_fecha_dia, default=None, help="YYYY-MM-DD")
+    listado.add_argument("--hasta", type=_fecha_dia, default=None, help="YYYY-MM-DD")
     listado.add_argument("--db", type=Path, default=None)
 
     pagos = export_sub.add_parser("pagos", help="Conciliación de pagos (REP)")
@@ -71,9 +96,9 @@ def construir_parser() -> argparse.ArgumentParser:
 
     run = semana_sub.add_parser("run", help="Ejecutar la cola (importar, estatus, exportar)")
     run.add_argument("--config", type=Path, default=None, help="Ruta del JSON de config")
-    run.add_argument("--periodo", type=str, default=None, help="AAAA-MM (por defecto el mes anterior)")
-    run.add_argument("--delay", type=float, default=None, help="Segundos entre peticiones SAT")
-    run.add_argument("--pausa", type=float, default=None, help="Pausa entre clientes")
+    run.add_argument("--periodo", type=_periodo, default=None, help="AAAA-MM (por defecto el mes anterior)")
+    run.add_argument("--delay", type=_no_negativo, default=None, help="Segundos entre peticiones SAT")
+    run.add_argument("--pausa", type=_no_negativo, default=None, help="Pausa entre clientes")
     run.add_argument("--force", action="store_true", help="Revalidar todo")
     run.add_argument("--db", type=Path, default=None)
 
@@ -81,6 +106,10 @@ def construir_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
+    try:
+        signal.signal(signal.SIGINT, lambda *_: sys.exit(130))
+    except (ValueError, OSError):
+        pass
     parser = construir_parser()
     args = parser.parse_args(argv)
 
@@ -88,46 +117,69 @@ def main(argv: list[str] | None = None) -> None:
         parser.print_help()
         return
 
-    if args.comando == "import":
-        with Catalogo(_db_path(args)) as catalogo:
-            res = importar_carpeta(catalogo, args.carpeta, args.cliente)
-        print(
-            f"Procesados: {res.procesados} | Insertados: {res.insertados} | "
-            f"Omitidos: {res.omitidos} | Errores: {res.errores}"
+    match args.comando:
+        case "import":
+            _cmd_import(args)
+        case "estatus":
+            _cmd_estatus(args)
+        case "export":
+            _cmd_export(args, parser)
+        case "semana":
+            _cmd_semana(args)
+        case _:
+            parser.print_help()
+
+
+def _cmd_import(args) -> None:
+    with Catalogo(_db_path(args)) as catalogo:
+        res = importar_carpeta(catalogo, args.carpeta, args.cliente)
+    print(
+        f"Procesados: {res.procesados} | Insertados: {res.insertados} | "
+        f"Omitidos: {res.omitidos} | Errores: {res.errores}"
+    )
+    if res.detalle_errores:
+        print("Errores:")
+        for err in res.detalle_errores[:10]:
+            print(f"  {err}")
+
+
+def _cmd_estatus(args) -> None:
+    def _prog(actual: int, total: int) -> None:
+        if not getattr(args, "quiet", False):
+            _progreso(actual, total)
+
+    with Catalogo(_db_path(args)) as catalogo:
+        config = ConfigLote(delay_segundos=args.delay)
+        res = consultar_lote(
+            catalogo, config=config, cliente=args.cliente, force=args.force, progreso=_prog
         )
-        if res.detalle_errores:
-            print("Errores:")
-            for err in res.detalle_errores[:10]:
-                print(f"  {err}")
-    elif args.comando == "estatus":
-        with Catalogo(_db_path(args)) as catalogo:
-            config = ConfigLote(delay_segundos=args.delay)
-            res = consultar_lote(
-                catalogo, config=config, cliente=args.cliente, force=args.force, progreso=_progreso
-            )
-        print(
-            f"\nConsultados: {res.consultados} | Vigentes: {res.vigentes} | "
-            f"Cancelados: {res.cancelados} | No encontrados: {res.no_encontrados} | "
-            f"Fallos: {res.fallos}"
-        )
-        if res.detalle:
-            print("Fallos:")
-            for fallo in res.detalle[:10]:
-                print(f"  {fallo}")
-    elif args.comando == "export":
-        with Catalogo(_db_path(args)) as catalogo:
-            if args.formato == "listado":
+    if getattr(args, "json", False):
+        print(json.dumps(res.__dict__, default=str))
+        return
+    print(
+        f"\nConsultados: {res.consultados} | Vigentes: {res.vigentes} | "
+        f"Cancelados: {res.cancelados} | No encontrados: {res.no_encontrados} | "
+        f"Fallos: {res.fallos}"
+    )
+    if res.detalle:
+        print("Fallos:")
+        for fallo in res.detalle[:10]:
+            print(f"  {fallo}")
+
+
+def _cmd_export(args, parser) -> None:
+    with Catalogo(_db_path(args)) as catalogo:
+        match args.formato:
+            case "listado":
                 destino = exportar_listado(
                     catalogo, args.destino, cliente=args.cliente, desde=args.desde, hasta=args.hasta
                 )
                 print(f"Listado exportado a {destino}")
-            elif args.formato == "pagos":
+            case "pagos":
                 destino = exportar_pagos(catalogo, args.destino, cliente=args.cliente)
                 print(f"Conciliación exportada a {destino}")
-    elif args.comando == "semana":
-        _cmd_semana(args)
-    else:
-        parser.print_help()
+            case _:
+                parser.print_help()
 
 
 def _cmd_semana(args) -> None:
@@ -163,13 +215,15 @@ def _cmd_semana(args) -> None:
     print(f"Periodo: {config.periodo} | Clientes: {', '.join(config.clientes)}")
 
     def _progreso_semana(etiqueta: str, etapa: str, actual: int, total: int) -> None:
-        if not etiqueta:
-            print(f"\r  Pausa {actual}/{total}", end="", flush=True)
-            return
-        if etapa in ("Importando", "Exportando", "Preparando", "Listo"):
-            print(f"\r  [{etiqueta}] {etapa}...", end="", flush=True)
-        elif etapa == "Validando":
-            print(f"\r  [{etiqueta}] Validando {actual}/{total}...", end="", flush=True)
+        match (etiqueta, etapa):
+            case ("", _):
+                print(f"\r  Pausa {actual}/{total}", end="", flush=True)
+            case (_, "Validando"):
+                print(f"\r  [{etiqueta}] Validando {actual}/{total}...", end="", flush=True)
+            case (_, "Importando" | "Exportando" | "Preparando" | "Listo"):
+                print(f"\r  [{etiqueta}] {etapa}...", end="", flush=True)
+            case _:
+                pass
 
     res = procesar_semana(config, _db_path(args), progreso=_progreso_semana)
     print()

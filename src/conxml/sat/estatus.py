@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Callable
@@ -43,6 +44,20 @@ def _aplicar_estatus(
     estatus_sat: ResultadoEstatus,
     catalogo: Catalogo,
     resultado: ResultadoLote,
+    candado: threading.Lock | None = None,
+) -> None:
+    if candado is not None:
+        with candado:
+            _aplicar_estatus_sin_lock(fila, estatus_sat, catalogo, resultado)
+    else:
+        _aplicar_estatus_sin_lock(fila, estatus_sat, catalogo, resultado)
+
+
+def _aplicar_estatus_sin_lock(
+    fila: dict | sqlite3.Row,
+    estatus_sat: ResultadoEstatus,
+    catalogo: Catalogo,
+    resultado: ResultadoLote,
 ) -> None:
     resultado.consultados += 1
     if estatus_sat.es_vigente:
@@ -65,20 +80,34 @@ def _aplicar_estatus(
             catalogo.commit()
 
 
+def _anotar_fallo(
+    resultado: ResultadoLote, uuid: str, exc: Exception, candado: threading.Lock | None = None
+) -> None:
+    def _hacer():
+        resultado.fallos += 1
+        if len(resultado.detalle) < DETALLE_MAX:
+            resultado.detalle.append(f"{uuid}: {exc}")
+
+    if candado is not None:
+        with candado:
+            _hacer()
+    else:
+        _hacer()
+
+
 def _procesar_fila(
     fila: dict | sqlite3.Row,
     config: ConfigLote,
     sesion: requests.Session,
     catalogo: Catalogo,
     resultado: ResultadoLote,
+    candado: threading.Lock | None = None,
 ) -> None:
     try:
         estatus_sat = _consultar_con_reintentos(fila, config=config, sesion=sesion)
-        _aplicar_estatus(fila, estatus_sat, catalogo, resultado)
+        _aplicar_estatus(fila, estatus_sat, catalogo, resultado, candado)
     except Exception as exc:  # noqa: BLE001
-        resultado.fallos += 1
-        if len(resultado.detalle) < DETALLE_MAX:
-            resultado.detalle.append(f"{fila['uuid']}: {exc}")
+        _anotar_fallo(resultado, fila["uuid"], exc, candado)
 
 
 def consultar_lote(
@@ -122,24 +151,50 @@ def consultar_lote(
                 if indice < total and config.delay_segundos:
                     time.sleep(config.delay_segundos)
         else:
+            # Paralelo solo para red (Session por hilo: requests.Session no es
+            # thread-safe). La escritura a SQLite y contadores se hace en el
+            # hilo principal, así no se comparte la conexión entre hilos.
+            estado_hilo = threading.local()
+
+            def _sesion_hilo() -> requests.Session:
+                ses = getattr(estado_hilo, "sesion", None)
+                if ses is None:
+                    ses = requests.Session()
+                    ses.mount("https://", adapter)
+                    ses.mount("http://", adapter)
+                    estado_hilo.sesion = ses
+                return ses
+
+            def _consultar_hilo(fila: dict) -> ResultadoEstatus:
+                try:
+                    return _consultar_con_reintentos(
+                        fila, config=config, sesion=_sesion_hilo()
+                    )
+                finally:
+                    if config.delay_segundos:
+                        time.sleep(config.delay_segundos)
+
             completados = 0
-            with concurrent.futures.ThreadPoolExecutor(max_workers=config.max_workers) as executor:
-                futuros = {
-                    executor.submit(_consultar_con_reintentos, fila, config, sesion): fila
-                    for fila in registros
-                }
-                for futuro in concurrent.futures.as_completed(futuros):
-                    fila = futuros[futuro]
-                    completados += 1
-                    if progreso is not None:
-                        progreso(completados, total)
-                    try:
-                        estatus_sat = futuro.result()
-                        _aplicar_estatus(fila, estatus_sat, catalogo, resultado)
-                    except Exception as exc:  # noqa: BLE001
-                        resultado.fallos += 1
-                        if len(resultado.detalle) < DETALLE_MAX:
-                            resultado.detalle.append(f"{fila['uuid']}: {exc}")
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=config.max_workers) as executor:
+                    futuros = {
+                        executor.submit(_consultar_hilo, fila): fila
+                        for fila in registros
+                    }
+                    for futuro in concurrent.futures.as_completed(futuros):
+                        fila = futuros[futuro]
+                        completados += 1
+                        if progreso is not None:
+                            progreso(completados, total)
+                        try:
+                            estatus_sat = futuro.result()
+                            _aplicar_estatus_sin_lock(fila, estatus_sat, catalogo, resultado)
+                        except Exception as exc:  # noqa: BLE001
+                            _anotar_fallo(resultado, fila["uuid"], exc)
+            finally:
+                ses = getattr(estado_hilo, "sesion", None)
+                if ses is not None:
+                    ses.close()
 
     catalogo.commit()
     return resultado
@@ -162,4 +217,4 @@ def _consultar_con_reintentos(
         except Exception:
             if intento == config.reintentos:
                 raise
-            time.sleep(min(2**intento, config.delay_segundos or 0.5))
+            time.sleep((config.delay_segundos or 0.0) + min(2**intento, 8))

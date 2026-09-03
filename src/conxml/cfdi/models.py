@@ -8,8 +8,10 @@ from decimal import Decimal
 from pathlib import Path
 
 
-@dataclass
-class Traslado:
+@dataclass(slots=True)
+class Impuesto:
+    """Base de Traslado/Retencion (antes dos clases idénticas)."""
+
     base: Decimal | None
     impuesto: str
     tipo_factor: str
@@ -17,16 +19,17 @@ class Traslado:
     importe: Decimal | None
 
 
-@dataclass
-class Retencion:
-    base: Decimal | None
-    impuesto: str
-    tipo_factor: str
-    tasa_o_cuota: Decimal | None
-    importe: Decimal | None
+@dataclass(slots=True)
+class Traslado(Impuesto):
+    pass
 
 
-@dataclass
+@dataclass(slots=True)
+class Retencion(Impuesto):
+    pass
+
+
+@dataclass(slots=True)
 class Comprobante:
     ruta: Path
     version: str

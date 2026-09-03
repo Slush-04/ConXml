@@ -51,542 +51,36 @@ from conxml.ui.widgets import (
     ResumenOperacion,
 )
 
-MODO_CFDI40 = "cfdi40"
-MODO_PAGOS = "pagos"
-MODO_NOMINA = "nomina"
-
-_COLUMNAS_CFDI40 = [
-    ("verificado", "Verificado o Asoc", 110),
-    ("estatus", "Estado SAT", 100),
-    ("es_cancelable", "EsCancelable", 110),
-    ("estatus_cancelacion", "EstatusCancelacion", 140),
-    ("relaciones", "CfdiRelacionados", 160),
-    ("uuid", "UUID", 240),
-    ("serie", "Serie", 60),
-    ("folio", "Folio", 70),
-    ("version", "Version", 60),
-    ("tipo", "TipoComprobante", 110),
-    ("fecha_timbrado", "FechaTimbradoXML", 140),
-    ("fecha", "FechaEmisionXML", 140),
-    ("lugar_expedicion", "LugarDeExpedicion", 110),
-    ("emisor_rfc", "RFC Emisor", 110),
-    ("emisor", "Nombre Emisor", 180),
-    ("emisor_regimen", "RegimenFiscal", 140),
-    ("receptor_rfc", "RFC Receptor", 110),
-    ("receptor", "Nombre Receptor", 180),
-    ("uso_cfdi", "UsoCFDI", 160),
-    ("regimen_fiscal_receptor", "RegimenFiscalReceptor", 160),
-    ("domicilio_fiscal_receptor", "DomicilioFiscalReceptor", 140),
-    ("forma_pago", "FormaDePago", 140),
-    ("metodo_pago", "Metodo de Pago", 120),
-    ("complementos", "Complementos comprobante", 160),
-    ("conceptos", "Conceptos", 220),
-    ("complementos_conceptos", "Complementos conceptos", 140),
-    ("subtotal", "SubTotal", 90),
-    ("descuento", "Descuento", 90),
-    ("total_traslados", "Total Trasladados", 100),
-    ("total_retenciones", "Total Retenidos", 100),
-    ("total", "Total", 100),
-    ("moneda", "Moneda", 60),
-    ("iva_exento", "IVA Exento Base", 90),
-    ("iva_cero", "IVA Cero Base", 90),
-    ("iva_8", "IVA 8 Importe", 90),
-    ("iva_16", "IVA 16 Importe", 90),
-    ("isr_ret", "ISR Retenido", 90),
-    ("iva_ret", "IVA Retenido", 90),
-    ("ieps_ret", "IEPS Retenido", 90),
-    ("ret_isr_125", "Ret ISR 1.25 Importe", 100),
-    ("ret_iva_106", "Ret IVA 10.6667 Importe", 110),
-    ("ret_iva_8", "Ret IVA 8 Importe", 90),
-    ("ret_iva_6", "Ret IVA 6 Importe", 90),
-    ("ret_iva_16", "Ret IVA 16 Importe", 90),
-    ("no_cert_sat", "No Certificado SAT", 140),
-    ("no_cert_emisor", "No Certificado Emisor", 140),
-    ("ruta", "Archivo XML", 200),
-]
-
-_COLUMNAS_PAGOS_CONCILIACION = [
-    ("cliente", "Cliente", 120),
-    ("uuid_rep", "UUID REP", 240),
-    ("serie_rep", "Serie REP", 60),
-    ("folio_rep", "Folio REP", 70),
-    ("fecha_rep", "Fecha REP", 130),
-    ("estatus_rep", "Estatus REP", 100),
-    ("fecha_pago", "Fecha Pago", 130),
-    ("forma_pago", "Forma Pago", 140),
-    ("moneda_pago", "Moneda Pago", 70),
-    ("monto", "Monto", 90),
-    ("num_operacion", "Núm. Operación", 100),
-    ("cta_origen", "Cuenta Origen", 110),
-    ("cta_destino", "Cuenta Destino", 110),
-    ("rfc_cta_origen", "RFC Cta Origen", 110),
-    ("uuid_doc", "UUID Factura", 240),
-    ("serie", "Serie", 60),
-    ("folio", "Folio", 70),
-    ("moneda_dr", "Moneda DR", 70),
-    ("parcialidad", "Parcialidad", 60),
-    ("saldo_ant", "Saldo Anterior", 95),
-    ("pagado", "Pagado", 95),
-    ("saldo_insoluto", "Saldo Insoluto", 95),
-    ("estatus_factura", "Estatus Factura", 100),
-    ("estatus_consultado", "Estatus consultado", 110),
-    ("es_cancelable_rep", "EsCancelable REP", 110),
-    ("estatus_cancelacion_rep", "EstatusCancelacion REP", 140),
-    ("fecha_timbrado_rep", "FechaTimbrado REP", 130),
-    ("tipo_comprobante_rep", "TipoComprobante REP", 110),
-    ("ruta_rep", "Archivo XML REP", 180),
-    ("es_cancelable", "EsCancelable", 110),
-    ("estatus_cancelacion", "EstatusCancelacion", 140),
-    ("fecha_timbrado", "FechaTimbradoXML", 130),
-    ("tipo_comprobante", "TipoComprobante", 110),
-    ("total_factura", "Total Factura", 95),
-    ("ruta", "Archivo XML", 180),
-]
-
-_COLUMNAS_NOMINA = [
-    ("cliente", "Cliente", 120),
-    ("estatus", "Estado SAT", 100),
-    ("es_cancelable", "EsCancelable", 110),
-    ("estatus_cancelacion", "EstatusCancelacion", 140),
-    ("uuid", "UUID", 240),
-    ("serie", "Serie", 60),
-    ("folio", "Folio", 70),
-    ("fecha_timbrado", "FechaTimbradoXML", 130),
-    ("fecha", "FechaEmisionXML", 130),
-    ("emisor_rfc", "RFC Emisor", 110),
-    ("emisor_nombre", "Nombre Emisor", 180),
-    ("registro_patronal", "Registro Patronal", 120),
-    ("receptor_rfc", "RFC Receptor", 110),
-    ("receptor_nombre", "Nombre Receptor", 180),
-    ("curp", "CURP", 140),
-    ("num_empleado", "Num Empleado", 90),
-    ("puesto", "Puesto", 140),
-    ("tipo_nomina", "Tipo Nomina", 90),
-    ("fecha_pago", "Fecha Pago", 110),
-    ("fecha_inicial_pago", "Fecha Inicial Pago", 110),
-    ("fecha_final_pago", "Fecha Final Pago", 110),
-    ("num_dias_pagados", "Num Dias Pagados", 90),
-    ("periodicidad_pago", "Periodicidad Pago", 110),
-    ("total_percepciones", "Total Percepciones", 100),
-    ("total_deducciones", "Total Deducciones", 100),
-    ("total_otros_pagos", "Total Otros Pagos", 100),
-    ("subtotal", "SubTotal", 90),
-    ("descuento", "Descuento", 90),
-    ("total", "Total", 90),
-    ("moneda", "Moneda", 60),
-    ("ruta", "Archivo XML", 180),
-]
-
-# ── Vistas de Conciliación de Pagos (estilo Mi Admin XML) ────────────────────
-
-VISTAS_PAGOS = [
-    ("conciliacion", "Conciliación"),
-    ("facturas_ppd", "Facturas PPD"),
-    ("facturas_p", "Facturas P"),
-    ("pagos", "Pagos"),
-    ("doctos", "DoctosRelacionados"),
-]
-
-_COLUMNAS_FACTURAS_PPD = [
-    ("cliente", "Cliente", 120),
-    ("estatus", "Estado SAT", 100),
-    ("es_cancelable", "EsCancelable", 110),
-    ("estatus_cancelacion", "EstatusCancelacion", 140),
-    ("uuid", "UUID", 240),
-    ("serie", "Serie", 60),
-    ("folio", "Folio", 70),
-    ("fecha", "FechaEmisionXML", 140),
-    ("fecha_timbrado", "FechaTimbradoXML", 140),
-    ("emisor_rfc", "RFC Emisor", 110),
-    ("emisor_nombre", "Nombre Emisor", 180),
-    ("receptor_rfc", "RFC Receptor", 110),
-    ("receptor_nombre", "Nombre Receptor", 180),
-    ("moneda", "Moneda", 60),
-    ("total", "Total", 100),
-    ("pagado", "Pagado", 100),
-    ("saldo_pendiente", "Saldo Pendiente", 110),
-    ("estado_cobranza", "Estatus de Pago", 150),
-    ("ruta", "Archivo XML", 200),
-]
-
-_COLUMNAS_FACTURAS_P = [
-    ("cliente", "Cliente", 120),
-    ("estatus", "Estado SAT", 100),
-    ("es_cancelable", "EsCancelable", 110),
-    ("estatus_cancelacion", "EstatusCancelacion", 140),
-    ("uuid", "UUID", 240),
-    ("serie", "Serie", 60),
-    ("folio", "Folio", 70),
-    ("fecha", "FechaEmisionXML", 140),
-    ("fecha_timbrado", "FechaTimbradoXML", 140),
-    ("emisor_rfc", "RFC Emisor", 110),
-    ("emisor_nombre", "Nombre Emisor", 180),
-    ("receptor_rfc", "RFC Receptor", 110),
-    ("receptor_nombre", "Nombre Receptor", 180),
-    ("moneda", "Moneda", 60),
-    ("total", "Total", 100),
-    ("num_pagos", "Núm. Pagos", 90),
-    ("monto_pagos", "Monto Pagado", 110),
-    ("ruta", "Archivo XML", 200),
-]
-
-_COLUMNAS_PAGOS_LISTA = [
-    ("cliente", "Cliente", 120),
-    ("uuid_rep", "UUID REP", 240),
-    ("serie_rep", "Serie REP", 60),
-    ("folio_rep", "Folio REP", 70),
-    ("estatus_rep", "Estado SAT REP", 100),
-    ("fecha_pago", "Fecha Pago", 130),
-    ("forma_pago", "Forma Pago", 140),
-    ("moneda", "Moneda", 70),
-    ("monto", "Monto", 100),
-    ("num_operacion", "Núm. Operación", 110),
-    ("cta_origen", "Cuenta Origen", 130),
-    ("cta_destino", "Cuenta Destino", 130),
-    ("rfc_cta_origen", "RFC Cta Origen", 120),
-    ("num_doctos", "Núm. Doctos", 90),
-]
-
-_COLUMNAS_DOCTOS = [
-    ("cliente", "Cliente", 120),
-    ("estatus_factura", "Estado SAT", 100),
-    ("no_cert_emisor", "No Certificado Emisor", 140),
-    ("no_cert_sat", "No Certificado SAT", 140),
-    ("fecha_emision", "Fecha Emision", 140),
-    ("fecha_timbrado", "Fecha Timbrado", 140),
-    ("anio", "Año", 55),
-    ("mes", "Mes", 50),
-    ("dia", "Día", 50),
-    ("serie", "Serie", 60),
-    ("folio", "Folio", 70),
-    ("uuid_doc", "UUID", 240),
-    ("rfc_emisor", "RFC Emisor", 110),
-    ("nombre_emisor", "Nombre Emisor", 180),
-    ("regimen_fiscal", "RegimenFiscal", 140),
-    ("fecha_pago", "Fecha Pago", 130),
-    ("forma_pago", "Forma Pago", 130),
-    ("monto", "Monto Pago", 90),
-    ("parcialidad", "Parcialidad", 80),
-    ("saldo_ant", "Saldo Anterior", 100),
-    ("pagado", "Pagado", 100),
-    ("saldo_insoluto", "Saldo Insoluto", 100),
-    ("uuid_rep", "UUID REP", 240),
-    ("serie_rep", "Serie REP", 60),
-    ("folio_rep", "Folio REP", 70),
-    ("ruta", "Archivo XML Factura", 200),
-]
-
-
-def _numero(valor: str | None) -> float | None:
-    return float(valor) if valor not in (None, "") else None
-
-
-def _breve(fecha: str | None) -> str:
-    return fecha[:16] if fecha else ""
-
-
-def aplicar_estilo_tabla(tabla: ttk.Treeview) -> None:
-    """Reestila la tabla con el tema Fluent Empresarial."""
-    estilo = ttk.Style()
-    estilo.configure(
-        "Tabla.Treeview",
-        background=th.FONDO_TABLA,
-        fieldbackground=th.FONDO_TABLA,
-        foreground=th.TEXTO,
-        borderwidth=0,
-        rowheight=24,
-        font=(th.FUENTE, th.TAM_TABLA),
-    )
-    estilo.configure(
-        "Tabla.Treeview.Heading",
-        background=th.FONDO,
-        foreground=th.TEXTO_SECUNDARIO,
-        relief="flat",
-        font=(th.FUENTE, th.TAM_NOTA, "bold"),
-    )
-    estilo.map("Tabla.Treeview", background=[("selected", th.PRIMARIO)])
-    estilo.map("Tabla.Treeview.Heading", background=[])
-
-    tabla.tag_configure("par", background=th.FONDO_TABLA)
-    tabla.tag_configure("impar", background=th.FONDO_ENTRADA)
-
-
-def auto_ajustar_columnas(tabla: ttk.Treeview, min_ancho: int = 70, max_ancho: int = 420) -> None:
-    """Ajusta automáticamente el ancho de cada columna al contenido más largo."""
-    try:
-        font = tkfont.Font(family=th.FUENTE, size=th.TAM_TABLA)
-        font_bold = tkfont.Font(family=th.FUENTE, size=th.TAM_NOTA, weight="bold")
-    except Exception:
-        return
-
-    items = tabla.get_children()
-    display = tabla["displaycolumns"]
-    if display and "#all" not in display:
-        columnas = list(display)
-    else:
-        columnas = list(tabla["columns"])
-    for col in columnas:
-        header_text = tabla.heading(col)["text"]
-        w_max = font_bold.measure(str(header_text)) + 24
-        for item in items[:100]:
-            val = tabla.set(item, col)
-            if val:
-                w = font.measure(str(val)) + 18
-                if w > w_max:
-                    w_max = w
-        ancho_final = max(min_ancho, min(w_max, max_ancho))
-        tabla.column(col, width=ancho_final, stretch=False)
+from conxml.ui.columnas_def import (
+    MODO_CFDI40,
+    MODO_NOMINA,
+    MODO_PAGOS,
+    VISTAS_PAGOS,
+    _COLUMNAS_CFDI40,
+    _COLUMNAS_DOCTOS,
+    _COLUMNAS_FACTURAS_P,
+    _COLUMNAS_FACTURAS_PPD,
+    _COLUMNAS_NOMINA,
+    _COLUMNAS_PAGOS_CONCILIACION,
+    _COLUMNAS_PAGOS_LISTA,
+)
+from conxml.ui.tabla_mixin import (
+    FILAS_POR_PAGINA,
+    PaginacionMixin,
+    aplicar_estilo_tabla,
+    auto_ajustar_columnas,
+    breve as _breve,
+    numero as _numero,
+)
 
 
 # ── Componentes de Resumen de Totales ─────────────────────────────────────────
 
-class PanelResumenTotales(PanelCard):
-    """Panel de resumen para XML 4.0 (Totales, Vigentes, Cancelados)."""
+from conxml.ui.paneles_resumen import PanelResumenPagos, PanelResumenTotales
 
-    def __init__(self, parent: ctk.CTkFrame) -> None:
-        super().__init__(parent)
-        self._filas: list[dict] = []
+class PantallaAdministracion(PaginacionMixin, ctk.CTkFrame):
+    filas_por_pagina: int = FILAS_POR_PAGINA
 
-        contenedor = ctk.CTkFrame(self, fg_color="transparent")
-        contenedor.pack(fill="x", expand=True, padx=12, pady=6)
-
-        header = ctk.CTkFrame(contenedor, fg_color="transparent")
-        header.pack(fill="x", pady=(0, 4))
-
-        ctk.CTkLabel(
-            header, text="RESUMEN DE TOTALES", text_color=th.TEXTO_SECUNDARIO,
-            font=(th.FUENTE, th.TAM_NOTA, "bold"),
-        ).pack(side="left")
-
-        self.seg_modo = ctk.CTkSegmentedButton(
-            header,
-            values=["Totales", "Vigentes", "Cancelados"],
-            command=self._al_cambiar_filtro,
-            fg_color=th.FONDO_ENTRADA,
-            selected_color=th.PRIMARIO,
-            selected_hover_color=th.PRIMARIO_HOVER,
-            unselected_color=th.FONDO_TARJETA,
-            unselected_hover_color=th.PRIMARIO_FONDO,
-            text_color=th.TEXTO,
-            font=(th.FUENTE, th.TAM_NOTA, "bold"),
-            height=26,
-        )
-        self.seg_modo.set("Totales")
-        self.seg_modo.pack(side="right")
-
-        self.grid_totales = ctk.CTkFrame(contenedor, fg_color="transparent")
-        self.grid_totales.pack(fill="x")
-        for col in range(6):
-            self.grid_totales.columnconfigure(col, weight=1, uniform="totales")
-
-        self._labels_cnt: dict[str, ctk.CTkLabel] = {}
-        self._labels_monto: dict[str, ctk.CTkLabel] = {}
-
-        items_def = [
-            ("ingresos", "Total Ingresos", th.PRIMARIO),
-            ("egresos", "Total Egresos", th.ROJO),
-            ("traslados", "Total Traslados", "#0891B2"),
-            ("ppd", "Total PPD", th.AMBAR),
-            ("pue", "Total PUE", "#9333EA"),
-            ("total", "Total XML", th.TEXTO),
-        ]
-
-        for col, (clave, titulo, color) in enumerate(items_def):
-            card_item = ctk.CTkFrame(self.grid_totales, fg_color=th.FONDO_ENTRADA, corner_radius=6)
-            card_item.grid(row=0, column=col, sticky="nsew", padx=3 if col > 0 else 0)
-
-            pad = ctk.CTkFrame(card_item, fg_color="transparent")
-            pad.pack(fill="both", expand=True, padx=8, pady=6)
-
-            lbl_t = ctk.CTkLabel(
-                pad, text=f"{titulo} (0)", text_color=color,
-                font=(th.FUENTE, th.TAM_NOTA, "bold" if clave == "total" else "normal"), anchor="w",
-            )
-            lbl_t.pack(anchor="w")
-            self._labels_cnt[clave] = lbl_t
-
-            lbl_m = ctk.CTkLabel(
-                pad, text="$0.00", text_color=color,
-                font=(th.FUENTE, th.TAM_BODY, "bold"), anchor="e",
-            )
-            lbl_m.pack(anchor="e", pady=(2, 0))
-            self._labels_monto[clave] = lbl_m
-
-    def actualizar(self, filas: list) -> None:
-        self._filas = [dict(f) if not isinstance(f, dict) else f for f in filas]
-        self._al_cambiar_filtro(self.seg_modo.get())
-
-    def _al_cambiar_filtro(self, modo: str) -> None:
-        if modo == "Vigentes":
-            filas_f = [f for f in self._filas if f.get("estatus") == "Vigente"]
-        elif modo == "Cancelados":
-            filas_f = [f for f in self._filas if f.get("estatus") == "Cancelado"]
-        else:
-            filas_f = self._filas
-
-        c_ing, m_ing = 0, 0.0
-        c_egr, m_egr = 0, 0.0
-        c_tra, m_tra = 0, 0.0
-        c_ppd, m_ppd = 0, 0.0
-        c_pue, m_pue = 0, 0.0
-        c_tot, m_tot = 0, 0.0
-
-        for r in filas_f:
-            t = r.get("tipo_comprobante")
-            m = r.get("metodo_pago")
-            tot_val = float(r.get("total")) if r.get("total") not in (None, "") else 0.0
-
-            c_tot += 1
-            m_tot += tot_val
-
-            if t == "I":
-                c_ing += 1; m_ing += tot_val
-            elif t == "E":
-                c_egr += 1; m_egr += tot_val
-            elif t == "T":
-                c_tra += 1; m_tra += tot_val
-
-            if m == "PPD":
-                c_ppd += 1; m_ppd += tot_val
-            elif m == "PUE":
-                c_pue += 1; m_pue += tot_val
-
-        datos = {
-            "ingresos": (c_ing, m_ing, "Total Ingresos"),
-            "egresos": (c_egr, m_egr, "Total Egresos"),
-            "traslados": (c_tra, m_tra, "Total Traslados"),
-            "ppd": (c_ppd, m_ppd, "Total PPD"),
-            "pue": (c_pue, m_pue, "Total PUE"),
-            "total": (c_tot, m_tot, "Total XML"),
-        }
-
-        for clave, (cnt, monto, tit) in datos.items():
-            self._labels_cnt[clave].configure(text=f"{tit} ({cnt})")
-            self._labels_monto[clave].configure(text=f"${monto:,.2f}")
-
-
-class PanelResumenPagos(PanelCard):
-    """Panel de resumen para Conciliación de Pagos (PPD, P, Pagos, Doctos, Tot/Parcialmente pagadas)."""
-
-    def __init__(self, parent: ctk.CTkFrame) -> None:
-        super().__init__(parent)
-        contenedor = ctk.CTkFrame(self, fg_color="transparent")
-        contenedor.pack(fill="x", expand=True, padx=12, pady=6)
-
-        header = ctk.CTkFrame(contenedor, fg_color="transparent")
-        header.pack(fill="x", pady=(0, 4))
-
-        ctk.CTkLabel(
-            header, text="RESUMEN DE CONCILIACIÓN DE PAGOS", text_color=th.TEXTO_SECUNDARIO,
-            font=(th.FUENTE, th.TAM_NOTA, "bold"),
-        ).pack(side="left")
-
-        self.grid_pagos = ctk.CTkFrame(contenedor, fg_color="transparent")
-        self.grid_pagos.pack(fill="x")
-        for col in range(7):
-            self.grid_pagos.columnconfigure(col, weight=1, uniform="pagos")
-
-        self._labels_cnt: dict[str, ctk.CTkLabel] = {}
-        self._labels_monto: dict[str, ctk.CTkLabel] = {}
-
-        items_def = [
-            ("fact_ppd", "Facturas PPD", th.PRIMARIO),
-            ("fact_p", "Facturas P", th.VERDE),
-            ("pagos", "Pagos", th.VERDE),
-            ("doctos", "Doctos Relacionados", "#0891B2"),
-            ("no_pagadas", "No pagadas", "#9333EA"),
-            ("tot_pagadas", "Totalmente pagadas", th.AMBAR),
-            ("parc_pagadas", "Parcialmente pagadas", "#9333EA"),
-        ]
-
-        for col, (clave, titulo, color) in enumerate(items_def):
-            card_item = ctk.CTkFrame(self.grid_pagos, fg_color=th.FONDO_ENTRADA, corner_radius=6)
-            card_item.grid(row=0, column=col, sticky="nsew", padx=3 if col > 0 else 0)
-
-            pad = ctk.CTkFrame(card_item, fg_color="transparent")
-            pad.pack(fill="both", expand=True, padx=8, pady=6)
-
-            lbl_t = ctk.CTkLabel(
-                pad, text=f"{titulo} (0)", text_color=color,
-                font=(th.FUENTE, th.TAM_NOTA, "bold"), anchor="w",
-            )
-            lbl_t.pack(anchor="w")
-            self._labels_cnt[clave] = lbl_t
-
-            lbl_m = ctk.CTkLabel(
-                pad, text="$0.00", text_color=color,
-                font=(th.FUENTE, th.TAM_BODY, "bold"), anchor="e",
-            )
-            lbl_m.pack(anchor="e", pady=(2, 0))
-            self._labels_monto[clave] = lbl_m
-
-    def actualizar(self, catalogo: Catalogo, cliente: str | None) -> None:
-        comprobantes = list(catalogo.consulta(cliente=cliente))
-        pagos = list(catalogo.consultar_pagos(cliente=cliente))
-        doctos = []
-        for p in pagos:
-            doctos.extend(catalogo.consultar_doctos(p["id"]))
-
-        ppd = [c for c in comprobantes if c["metodo_pago"] == "PPD"]
-        ppd_cnt = len(ppd)
-        ppd_tot = sum(float(c["total"]) for c in ppd if c["total"])
-
-        fact_p = [c for c in comprobantes if c["tipo_comprobante"] == "P"]
-        fact_p_cnt = len(fact_p)
-        fact_p_tot = sum(float(c["total"]) for c in fact_p if c["total"])
-
-        pagos_cnt = len(pagos)
-        pagos_tot = sum(float(p["monto"]) for p in pagos if p["monto"])
-
-        doctos_cnt = len(doctos)
-        doctos_tot = sum(float(d["imp_pagado"]) for d in doctos if d["imp_pagado"])
-
-        doctos_by_doc = {}
-        for d in doctos:
-            u = d["uuid_doc"]
-            if u not in doctos_by_doc:
-                doctos_by_doc[u] = []
-            doctos_by_doc[u].append(d)
-
-        tot_pagadas_cnt, tot_pagadas_m = 0, 0.0
-        parc_pagadas_cnt, parc_pagadas_m = 0, 0.0
-        no_pagadas_cnt, no_pagadas_m = 0, 0.0
-
-        for f in ppd:
-            uuid = f["uuid"]
-            tot_f = float(f["total"]) if f["total"] else 0.0
-            if uuid not in doctos_by_doc:
-                no_pagadas_cnt += 1
-                no_pagadas_m += tot_f
-            else:
-                docs_f = doctos_by_doc[uuid]
-                ult_doc = max(docs_f, key=lambda x: x["num_parcialidad"] or 0)
-                insoluto = float(ult_doc["imp_saldo_insoluto"]) if ult_doc["imp_saldo_insoluto"] else 0.0
-                if insoluto <= 0.01:
-                    tot_pagadas_cnt += 1
-                    tot_pagadas_m += tot_f
-                else:
-                    parc_pagadas_cnt += 1
-                    parc_pagadas_m += tot_f
-
-        datos = {
-            "fact_ppd": (ppd_cnt, ppd_tot, "Facturas PPD"),
-            "fact_p": (fact_p_cnt, fact_p_tot, "Facturas P"),
-            "pagos": (pagos_cnt, pagos_tot, "Pagos"),
-            "doctos": (doctos_cnt, doctos_tot, "Doctos Relacionados"),
-            "no_pagadas": (no_pagadas_cnt, no_pagadas_m, "No pagadas"),
-            "tot_pagadas": (tot_pagadas_cnt, tot_pagadas_m, "Totalmente pagadas"),
-            "parc_pagadas": (parc_pagadas_cnt, parc_pagadas_m, "Parcialmente pagadas"),
-        }
-
-        for clave, (cnt, monto, tit) in datos.items():
-            self._labels_cnt[clave].configure(text=f"{tit} ({cnt})")
-            self._labels_monto[clave].configure(text=f"${monto:,.2f}")
-
-
-# ── Pantalla Principal de Administración ─────────────────────────────────────
-
-class PantallaAdministracion(ctk.CTkFrame):
     def __init__(self, parent: ctk.CTkFrame, app, modo: str) -> None:
         super().__init__(parent, fg_color="transparent")
         self.app = app
@@ -595,6 +89,8 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._carpeta_cargada: Path | None = None
         self._vista = "conciliacion"
         self._gestores: dict[str, GestorColumnas] = {}
+        self._filas_pagina: list[tuple] = []
+        self._pagina: int = 0
 
         contenedor = ctk.CTkFrame(self, fg_color="transparent")
         contenedor.pack(fill="both", expand=True, padx=16, pady=12)
@@ -720,6 +216,19 @@ class PantallaAdministracion(ctk.CTkFrame):
         scroll_y.grid(row=0, column=1, sticky="ns")
         scroll_x.grid(row=1, column=0, sticky="ew")
 
+        # Barra de paginación: 100 filas por página
+        barra_pag = ctk.CTkFrame(marco_tabla, fg_color="transparent")
+        barra_pag.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(4, 0))
+        self._btn_prev = BotonSecundario(barra_pag, "◀ Anterior", self.pagina_anterior)
+        self._btn_prev.pack(side="left")
+        self._lbl_pagina = ctk.CTkLabel(
+            barra_pag, text="0 filas",
+            text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA),
+        )
+        self._lbl_pagina.pack(side="left", padx=12)
+        self._btn_next = BotonSecundario(barra_pag, "Siguiente ▶", self.pagina_siguiente)
+        self._btn_next.pack(side="left")
+
         # Fila de acciones inferiores
         marco_acciones = ctk.CTkFrame(contenedor, fg_color="transparent")
         marco_acciones.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(8, 0))
@@ -829,7 +338,7 @@ class PantallaAdministracion(ctk.CTkFrame):
 
     def _abrir_columnas(self) -> None:
         self._gestor().abrir_dialogo(
-            self, al_aplicar=lambda: auto_ajustar_columnas(self._tabla)
+            self, al_aplicar=lambda: self.mostrar_pagina(self._pagina)
         )
 
     def _cambiar_vista(self, titulo: str) -> None:
@@ -1037,9 +546,19 @@ class PantallaAdministracion(ctk.CTkFrame):
 
     # ── Tabla ─────────────────────────────────────────────────────────────────
 
+    def _insert(self, values: tuple) -> None:
+        """Acumula una fila al buffer de paginación (100 por página)."""
+        self._filas_pagina.append(tuple(values))
+
+    def _insert_compat(self, *args, **kwargs) -> str:
+        """Compat: intercepta Treeview.insert(..., values=...) y lo pagina."""
+        values = kwargs.get("values", args[-1] if args else ())
+        self._insert(tuple(values))
+        return ""
+
     def _cargar_tabla(self) -> None:
-        for item in self._tabla.get_children():
-            self._tabla.delete(item)
+        self._filas_pagina = []
+        self._pagina = 0
         with Catalogo(self.app.db_path) as catalogo:
             if self.modo == MODO_PAGOS:
                 self._totales_panel.actualizar(catalogo, self._cliente_cargado)
@@ -1058,12 +577,19 @@ class PantallaAdministracion(ctk.CTkFrame):
                 else:
                     self._filas_nomina(catalogo)
 
-        auto_ajustar_columnas(self._tabla)
+        self.mostrar_pagina(0)
+
+    def _doctos_agrupados(self, catalogo: Catalogo) -> dict:
+        """Doctos de todos los pagos del cliente en 1 query (evita N+1)."""
+        pagos = list(catalogo.consultar_pagos(cliente=self._cliente_cargado))
+        agrupados = catalogo.consultar_doctos_lote([p["id"] for p in pagos])
+        return pagos, agrupados
 
     def _filas_facturas_ppd(self, catalogo: Catalogo) -> None:
         doctos_por_uuid: dict[str, list] = {}
-        for pago in catalogo.consultar_pagos(cliente=self._cliente_cargado):
-            for doc in catalogo.consultar_doctos(pago["id"]):
+        pagos, agrupados = self._doctos_agrupados(catalogo)
+        for pago in pagos:
+            for doc in agrupados.get(pago["id"], []):
                 doctos_por_uuid.setdefault(doc["uuid_doc"], []).append(doc)
 
         for i, f in enumerate(catalogo.consulta(cliente=self._cliente_cargado)):
@@ -1079,7 +605,7 @@ class PantallaAdministracion(ctk.CTkFrame):
                 ult_doc = max(docs, key=lambda x: x["num_parcialidad"] or 0)
                 insoluto = _numero(ult_doc["imp_saldo_insoluto"]) or 0.0
                 estado = "Totalmente pagada" if insoluto <= 0.01 else "Parcialmente pagada"
-            self._tabla.insert(
+            self._insert_compat(
                 "", "end",
                 values=(
                     f["cliente"],
@@ -1116,7 +642,7 @@ class PantallaAdministracion(ctk.CTkFrame):
                 continue
             base = "impar" if i % 2 == 1 else "par"
             n_pagos, monto = resumen_rep.get(f["uuid"], (0, 0.0))
-            self._tabla.insert(
+            self._insert_compat(
                 "", "end",
                 values=(
                     f["cliente"],
@@ -1143,10 +669,11 @@ class PantallaAdministracion(ctk.CTkFrame):
 
     def _filas_pagos_lista(self, catalogo: Catalogo) -> None:
         comprobantes = {f["uuid"]: f for f in catalogo.consulta(cliente=self._cliente_cargado)}
-        for i, pago in enumerate(catalogo.consultar_pagos(cliente=self._cliente_cargado)):
+        pagos, agrupados = self._doctos_agrupados(catalogo)
+        for i, pago in enumerate(pagos):
             rep = comprobantes.get(pago["comprobante_uuid"])
             base = "impar" if i % 2 == 1 else "par"
-            self._tabla.insert(
+            self._insert_compat(
                 "", "end",
                 values=(
                     rep["cliente"] if rep else pago["cliente"],
@@ -1162,7 +689,7 @@ class PantallaAdministracion(ctk.CTkFrame):
                     pago["cta_ordenante"] or "",
                     pago["cta_beneficiario"] or "",
                     pago["rfc_emisor_cta_ord"] or "",
-                    len(catalogo.consultar_doctos(pago["id"])),
+                    len(agrupados.get(pago["id"], [])),
                 ),
                 tags=(base,),
             )
@@ -1171,13 +698,14 @@ class PantallaAdministracion(ctk.CTkFrame):
         comprobantes = {f["uuid"]: f for f in catalogo.consulta(cliente=self._cliente_cargado)}
         todo = {f["uuid"]: f for f in catalogo.consulta()}
         contador_filas = 0
-        for pago in catalogo.consultar_pagos(cliente=self._cliente_cargado):
+        pagos, agrupados = self._doctos_agrupados(catalogo)
+        for pago in pagos:
             rep = comprobantes.get(pago["comprobante_uuid"])
-            for doc in catalogo.consultar_doctos(pago["id"]):
+            for doc in agrupados.get(pago["id"], []):
                 factura = todo.get(doc["uuid_doc"])
                 fecha = (factura["fecha"] or "") if factura else ""
                 base = "impar" if contador_filas % 2 == 1 else "par"
-                self._tabla.insert(
+                self._insert_compat(
                     "", "end",
                     values=(
                         pago["cliente"],
@@ -1219,9 +747,11 @@ class PantallaAdministracion(ctk.CTkFrame):
             traslados = _importes(fila["traslados_json"])
             retenciones = _importes(fila["retenciones_json"])
             complementos = [
-                c for c in (fila["complementos"] or "").split(", ") if c and c not in COMPLEMENTOS_IGNORADOS
+                c.strip()
+                for c in (fila["complementos"] or "").replace(";", ",").split(",")
+                if c.strip() and c.strip() not in COMPLEMENTOS_IGNORADOS
             ]
-            self._tabla.insert(
+            self._insert_compat(
                 "", "end",
                 values=(
                     "",  # Verificado o Asoc
@@ -1285,14 +815,15 @@ class PantallaAdministracion(ctk.CTkFrame):
         comprobantes = {f["uuid"]: f for f in catalogo.consulta(cliente=self._cliente_cargado)}
         todo = {f["uuid"]: f for f in catalogo.consulta()}
         contador_filas = 0
-        for pago in catalogo.consultar_pagos(cliente=self._cliente_cargado):
+        pagos, agrupados = self._doctos_agrupados(catalogo)
+        for pago in pagos:
             rep = comprobantes.get(pago["comprobante_uuid"])
-            for doc in catalogo.consultar_doctos(pago["id"]):
+            for doc in agrupados.get(pago["id"], []):
                 factura = todo.get(doc["uuid_doc"])
                 base = "impar" if contador_filas % 2 == 1 else "par"
                 est_rep = rep["estatus"] if rep else "Sin validar"
                 est_fact = factura["estatus"] if factura else "Sin validar"
-                self._tabla.insert(
+                self._insert_compat(
                     "", "end",
                     values=(
                         rep["cliente"] if rep else "",
@@ -1361,7 +892,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             t_ded = float(nom.total_deducciones) if (nom and nom.total_deducciones) else ""
             t_otr = float(nom.total_otros_pagos) if (nom and nom.total_otros_pagos) else ""
 
-            self._tabla.insert(
+            self._insert_compat(
                 "", "end",
                 values=(
                     fila["cliente"],

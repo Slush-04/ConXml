@@ -3,7 +3,12 @@
 from conxml.cfdi.models import Comprobante, Retencion, Traslado
 from conxml.cfdi.nomina import Deduccion, HorasExtra, Nomina, Percepcion, parse_nomina
 from conxml.cfdi.pagos import DoctoRelacionado, Pago, parse_pagos
-from conxml.cfdi.parser import CFDIParseError, UnsupportedVersionError, parse_comprobante
+from conxml.cfdi.parser import (
+    CFDIParseError,
+    UnsupportedVersionError,
+    parse_comprobante,
+    parse_comprobante_con_arbol,
+)
 
 __all__ = [
     "CFDIParseError",
@@ -18,6 +23,7 @@ __all__ = [
     "Traslado",
     "UnsupportedVersionError",
     "parse_comprobante",
+    "parse_comprobante_con_arbol",
     "parse_nomina",
     "parse_pagos",
 ]

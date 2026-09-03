@@ -127,8 +127,18 @@ def periodo_rango(periodo: str) -> tuple[str, str]:
 
 
 def _nombre_archivo(etiqueta: str, base: str, periodo: str) -> str:
-    limpio = re.sub(r'[\\/:*?"<>|]', "_", etiqueta)
-    return f"{limpio}/{base}_{periodo}.xlsx"
+    limpio = re.sub(r"[^A-Za-z0-9_-]+", "_", etiqueta).strip("_") or "cliente"
+    return f"{limpio}_{base}_{periodo}.xlsx"
+
+
+def _ruta_salida_segura(salidas: Path, etiqueta: str, base: str, periodo: str) -> Path:
+    """Evita traversal (../../) aunque la etiqueta venga de config externa."""
+    salidas = salidas.resolve()
+    salidas.mkdir(parents=True, exist_ok=True)
+    destino = (salidas / _nombre_archivo(etiqueta, base, periodo)).resolve()
+    if destino.parent != salidas:
+        raise ValueError(f"etiqueta insegura: {etiqueta!r}")
+    return destino
 
 
 @dataclass
@@ -262,12 +272,12 @@ def _procesar_cliente(config: ConfigSemana, db_path: str | Path, etiqueta: str,
         if progreso is not None:
             progreso(etiqueta, "Exportando", 0, 0)
         res.export_listado = exportar_listado(
-            catalogo, salidas / _nombre_archivo(etiqueta, "listado", config.periodo),
+            catalogo, _ruta_salida_segura(salidas, etiqueta, "listado", config.periodo),
             cliente=etiqueta, desde=desde, hasta=hasta,
         )
         if next(catalogo.consultar_pagos(cliente=etiqueta), None) is not None:
             res.export_pagos = exportar_pagos(
-                catalogo, salidas / _nombre_archivo(etiqueta, "pagos", config.periodo),
+                catalogo, _ruta_salida_segura(salidas, etiqueta, "pagos", config.periodo),
                 cliente=etiqueta,
             )
     if progreso is not None:

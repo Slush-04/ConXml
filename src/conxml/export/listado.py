@@ -10,12 +10,10 @@ traslados/retenciones guardados en el catálogo.
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill
 
 from conxml.catalog.db import Catalogo
 from conxml.cfdi.catalogos import (
@@ -24,6 +22,14 @@ from conxml.cfdi.catalogos import (
     TIPO_COMPROBANTE,
     USO_CFDI,
     describir,
+)
+from conxml.export.comun import (
+    ESTILO_ENCABEZADO,
+    dec_texto as _dec_texto,
+    fecha_texto as _fecha,
+    fill_estatus as _fill_estatus,
+    numero as _numero,
+    tasa_es as _tasa_es,
 )
 
 ENCABEZADOS = [
@@ -76,25 +82,30 @@ ENCABEZADOS = [
     "Archivo XML",
 ]
 
-COL_FECHA_TIMBRADO = 11
-COL_FECHA_EMISION = 12
-COL_SUBTOTAL = 27
-COL_DESCUENTO = 28
-COL_TRASLADADOS = 29
-COL_RETENIDOS = 30
-COL_TOTAL = 31
-COL_IVA_EXENTO = 33
-COL_IVA_CERO = 34
-COL_IVA_8 = 35
-COL_IVA_16 = 36
-COL_ISR = 37
-COL_IVA_RET = 38
-COL_IEPS = 39
-COL_RET_ISR_125 = 40
-COL_RET_IVA_106667 = 41
-COL_RET_IVA_8 = 42
-COL_RET_IVA_6 = 43
-COL_RET_IVA_16 = 44
+def _col(nombre: str) -> int:
+    return ENCABEZADOS.index(nombre) + 1
+
+
+COL_FECHA_TIMBRADO = _col("FechaTimbradoXML")
+COL_FECHA_EMISION = _col("FechaEmisionXML")
+COL_SUBTOTAL = _col("SubTotal")
+COL_DESCUENTO = _col("Descuento")
+COL_TRASLADADOS = _col("Total Trasladados")
+COL_RETENIDOS = _col("Total Retenidos")
+COL_TOTAL = _col("Total")
+COL_IVA_EXENTO = _col("IVA Exento Base")
+COL_IVA_CERO = _col("IVA Cero Base")
+COL_IVA_8 = _col("IVA 8 Importe")
+COL_IVA_16 = _col("IVA 16 Importe")
+COL_ISR = _col("ISR Retenido")
+COL_IVA_RET = _col("IVA Retenido")
+COL_IEPS = _col("IEPS Retenido")
+COL_RET_ISR_125 = _col("Ret ISR 1.25 Importe")
+COL_RET_IVA_106667 = _col("Ret IVA 10.6667 Importe")
+COL_RET_IVA_8 = _col("Ret IVA 8 Importe")
+COL_RET_IVA_6 = _col("Ret IVA 6 Importe")
+COL_RET_IVA_16 = _col("Ret IVA 16 Importe")
+COL_ESTADO_SAT = _col("Estado SAT")
 
 COMPLEMENTOS_IGNORADOS = {"TimbreFiscalDigital"}
 
@@ -102,62 +113,39 @@ ANCHOS = {
     "A": 10, "B": 13, "C": 22, "D": 20, "E": 38, "F": 38, "G": 8, "H": 10,
     "I": 8, "J": 15, "K": 19, "L": 19, "M": 15, "N": 15, "O": 32, "P": 32,
     "Q": 15, "R": 32, "S": 22, "T": 32, "U": 20, "V": 26, "W": 32, "X": 18,
-    "Y": 40, "Z": 18,
+    "Y": 40, "Z": 18, "AA": 14, "AB": 14, "AC": 14, "AD": 14, "AE": 14,
+    "AF": 16, "AG": 16, "AH": 16, "AI": 16, "AJ": 16, "AK": 18, "AL": 18,
+    "AM": 18, "AN": 18, "AO": 18, "AP": 18, "AQ": 18, "AR": 18, "AS": 18,
+    "AT": 18, "AU": 40,
 }
 
-COL_ESTADO_SAT = 2
 
-ESTILO_ENCABEZADO = Font(bold=True)
-FILL_VIGENTE = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-FILL_CANCELADO = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-FILL_SIN_DATO = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+def _fecha(valor: str | None):  # compat: ahora en comun
+    from conxml.export.comun import fecha_texto
 
-
-def _fill_estatus(estatus: str | None) -> PatternFill | None:
-    if estatus == "Vigente":
-        return FILL_VIGENTE
-    if estatus == "Cancelado":
-        return FILL_CANCELADO
-    if estatus is None:
-        return FILL_SIN_DATO
-    return None
+    return fecha_texto(valor)
 
 
-def _numero(valor: str | None) -> float | None:
-    return float(valor) if valor is not None else None
+def _dec_texto(valor: str | None):  # compat: ahora en comun
+    from conxml.export.comun import dec_texto
 
-
-def _fecha(valor: str | None) -> str | None:
-    """Fecha como texto ISO '2026-07-14T09:48:42' (formato de Mi Admin XML)."""
-    if not valor:
-        return None
-    try:
-        dt = datetime.fromisoformat(valor)
-    except ValueError:
-        return valor
-    return dt.isoformat(timespec="seconds")
-
-
-def _dec_texto(valor: str | None) -> float | None:
-    return float(Decimal(valor)) if valor else None
+    return dec_texto(valor)
 
 
 def _importes(json_texto: str | None) -> list[dict]:
     if not json_texto:
         return []
     try:
-        return json.loads(json_texto)
+        data = json.loads(json_texto)
+        return data if isinstance(data, list) else []
     except json.JSONDecodeError:
         return []
 
 
-def _tasa_es(valor: str | None, tasa: str) -> bool:
-    if not valor:
-        return False
-    try:
-        return Decimal(valor) == Decimal(tasa)
-    except (ValueError, InvalidOperation):
-        return False
+def _tasa_es(valor: str | None, tasa: str):  # compat: ahora en comun
+    from conxml.export.comun import tasa_es
+
+    return tasa_es(valor, tasa)
 
 
 def _traslado_por_tasa(traslados: list[dict], tasa: str) -> float | None:
@@ -220,10 +208,17 @@ def _retencion_por_tasa(retenciones: list[dict], impuesto: str, tasa: str) -> fl
 
 
 def _suma_importes(lista: list[dict]) -> float | None:
-    importes = [_dec_texto(t["importe"]) for t in lista if t.get("importe") is not None]
-    if not importes:
+    totales: list[Decimal] = []
+    for t in lista:
+        if t.get("importe") is None:
+            continue
+        try:
+            totales.append(Decimal(t["importe"]))
+        except (InvalidOperation, ValueError, TypeError):
+            continue
+    if not totales:
         return None
-    return round(sum(importes), 2)
+    return float(sum(totales, Decimal(0)).quantize(Decimal("0.01")))
 
 
 def exportar_listado(
@@ -248,7 +243,9 @@ def exportar_listado(
         traslados = _importes(fila["traslados_json"])
         retenciones = _importes(fila["retenciones_json"])
         complementos = [
-            c for c in (fila["complementos"] or "").split(", ") if c and c not in COMPLEMENTOS_IGNORADOS
+            c.strip()
+            for c in (fila["complementos"] or "").replace(";", ",").split(",")
+            if c.strip() and c.strip() not in COMPLEMENTOS_IGNORADOS
         ]
 
         ws.append(
@@ -288,7 +285,7 @@ def exportar_listado(
                 _base_por_factor(traslados, "Exento"),
                 _base_por_factor(traslados, "Tasa")
                 if any(
-                    t.get("tasa_o_cuota") == "0"
+                    _tasa_es(t.get("tasa_o_cuota"), "0")
                     for t in traslados
                     if t.get("impuesto") == "002" and t.get("tipo_factor") == "Tasa"
                 )
@@ -305,7 +302,7 @@ def exportar_listado(
                 _retencion_por_tasa(retenciones, "002", "0.16"),
                 fila["no_certificado_sat"],
                 fila["no_certificado_emisor"],
-                fila["ruta"],
+                Path(fila["ruta"]).name if fila["ruta"] else None,
             ]
         )
         n = ws.max_row

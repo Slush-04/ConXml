@@ -52,12 +52,13 @@ CREATE TABLE IF NOT EXISTS comprobantes (
     estatus TEXT,
     estatus_fecha TEXT,
     es_cancelable TEXT,
-    estatus_cancelacion TEXT
+    estatus_cancelacion TEXT,
+    FOREIGN KEY (uuid) REFERENCES comprobantes(uuid) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS pagos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    comprobante_uuid TEXT NOT NULL,
+    comprobante_uuid TEXT NOT NULL REFERENCES comprobantes(uuid) ON DELETE CASCADE,
     fecha_pago TEXT NOT NULL,
     forma_pago TEXT,
     moneda TEXT,
@@ -71,7 +72,7 @@ CREATE TABLE IF NOT EXISTS pagos (
 
 CREATE TABLE IF NOT EXISTS doctos_relacionados (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    pago_id INTEGER NOT NULL,
+    pago_id INTEGER NOT NULL REFERENCES pagos(id) ON DELETE CASCADE,
     uuid_doc TEXT NOT NULL,
     moneda TEXT,
     num_parcialidad INTEGER,
@@ -88,6 +89,15 @@ CREATE TABLE IF NOT EXISTS errores (
     mensaje TEXT NOT NULL,
     fecha TEXT NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_comprobantes_cliente_fecha
+    ON comprobantes(cliente, fecha);
+CREATE INDEX IF NOT EXISTS idx_comprobantes_tipo_estatus
+    ON comprobantes(tipo_comprobante, estatus);
+CREATE INDEX IF NOT EXISTS idx_pagos_comprobante
+    ON pagos(comprobante_uuid);
+CREATE INDEX IF NOT EXISTS idx_doctos_pago
+    ON doctos_relacionados(pago_id);
 """
 
 _COLUMNAS = (
@@ -132,13 +142,16 @@ def _json(objetos: list[Any]) -> str | None:
     """Serializa traslados/retenciones como JSON (Decimal -> str)."""
     if not objetos:
         return None
-    return json.dumps(
-        [
-            {k: (str(v) if isinstance(v, Decimal) else v) for k, v in o.__dict__.items()}
-            for o in objetos
-        ],
-        ensure_ascii=False,
-    )
+    import dataclasses
+
+    def _fila(o: Any) -> dict:
+        if dataclasses.is_dataclass(o):
+            data = dataclasses.asdict(o)  # compatible con slots=True
+        else:
+            data = o.__dict__
+        return {k: (str(v) if isinstance(v, Decimal) else v) for k, v in data.items()}
+
+    return json.dumps([_fila(o) for o in objetos], ensure_ascii=False)
 
 
 class Catalogo:
@@ -171,7 +184,7 @@ class Catalogo:
     def __enter__(self) -> "Catalogo":
         return self
 
-    def __exit__(self, *exc: Any) -> None:
+    def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
 
     def close(self) -> None:
@@ -231,9 +244,10 @@ class Catalogo:
                 ),
             )
             if cur.rowcount == 0:
-                self.actualizar_metadatos(comprobante.uuid, comprobante)
+                self.actualizar_metadatos(comprobante.uuid, comprobante, commit=False)
                 if comprobante.uuid and pagos:
                     self._completar_pagos_si_vacios(comprobante.uuid, pagos)
+                self.conn.commit()
                 return "skipped"
             if comprobante.uuid and pagos:
                 self._insert_pagos(comprobante.uuid, pagos)
@@ -243,7 +257,9 @@ class Catalogo:
             self.conn.rollback()
             raise
 
-    def actualizar_metadatos(self, uuid: str, comprobante: Comprobante) -> None:
+    def actualizar_metadatos(
+        self, uuid: str, comprobante: Comprobante, commit: bool = True
+    ) -> None:
         """Completa los metadatos nuevos de un comprobante ya existente.
 
         Solo escribe los campos que aún están vacíos (backfill idempotente),
@@ -280,7 +296,8 @@ class Catalogo:
                 uuid,
             ),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
 
     def _completar_pagos_si_vacios(self, comprobante_uuid: str, pagos: list[Pago]) -> None:
         """Backfill idempotente: solo inserta pagos si la factura no tiene ninguno.
@@ -349,6 +366,7 @@ class Catalogo:
         estatus: str,
         es_cancelable: str | None = None,
         estatus_cancelacion: str | None = None,
+        commit: bool = False,
     ) -> None:
         self.conn.execute(
             "UPDATE comprobantes SET estatus = ?, estatus_fecha = ?, es_cancelable = ?, "
@@ -361,6 +379,8 @@ class Catalogo:
                 uuid,
             ),
         )
+        if commit:
+            self.conn.commit()
 
     def _filtros_consulta(
         self,
@@ -383,7 +403,7 @@ class Catalogo:
             params.append(desde)
         if hasta is not None:
             where += " AND fecha <= ?"
-            params.append(hasta + "T23:59:59")
+            params.append(hasta if "T" in hasta else hasta + "T23:59:59")
         if sin_estatus:
             where += " AND estatus IS NULL"
         return where, params
@@ -431,6 +451,22 @@ class Catalogo:
             "SELECT * FROM doctos_relacionados WHERE pago_id = ? ORDER BY num_parcialidad",
             (pago_id,),
         ).fetchall()
+
+    def consultar_doctos_lote(self, pago_ids: list[int]) -> dict[int, list[sqlite3.Row]]:
+        """Trae doctos de muchos pagos en 1 query (evita N+1)."""
+        if not pago_ids:
+            return {}
+        self.conn.row_factory = sqlite3.Row
+        marcadores = ",".join("?" for _ in pago_ids)
+        filas = self.conn.execute(
+            f"SELECT * FROM doctos_relacionados WHERE pago_id IN ({marcadores}) "
+            "ORDER BY pago_id, num_parcialidad",
+            pago_ids,
+        ).fetchall()
+        agrupados: dict[int, list[sqlite3.Row]] = {pid: [] for pid in pago_ids}
+        for f in filas:
+            agrupados.setdefault(f["pago_id"], []).append(f)
+        return agrupados
 
     def contar(self, tabla: str) -> int:
         if tabla not in _TABLAS:
