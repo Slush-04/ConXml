@@ -120,6 +120,48 @@ def test_sidebar_compacto_y_recuperacion(tmp_path, monkeypatch):
         _destruir(raiz)
 
 
+def test_sidebar_se_puede_ocultar_y_recuperar(tmp_path, monkeypatch):
+    raiz, app = _crear_app(tmp_path, monkeypatch)
+    try:
+        app.navegar("admin40")
+        raiz.geometry("1200x800")
+        raiz.update_idletasks()
+        assert app._btn_sidebar.winfo_viewable() == 1
+        ancho_con_sidebar = app._contenido.winfo_width()
+        assert app.sidebar_visible is True
+        assert app._panel_lateral.winfo_manager() == "grid"
+
+        app.alternar_sidebar()
+        raiz.update_idletasks()
+        assert app.sidebar_visible is False
+        assert app._panel_lateral.winfo_manager() == ""
+        assert app._contenido.winfo_width() > ancho_con_sidebar
+
+        app.alternar_sidebar()
+        raiz.update_idletasks()
+        assert app.sidebar_visible is True
+        assert app._panel_lateral.winfo_manager() == "grid"
+    finally:
+        _destruir(raiz)
+
+
+def test_columnas_compartido_con_acciones_y_sin_anadir(tmp_path, monkeypatch):
+    raiz, app = _crear_app(tmp_path, monkeypatch)
+    try:
+        app.navegar("admin40")
+        raiz.update_idletasks()
+        pantalla = app._pantallas["admin40"]
+        assert pantalla._barra_tabla.winfo_manager() == ""
+        assert pantalla._btn_columnas.winfo_parent() == str(pantalla._marco_acciones)
+        assert pantalla._fila_carpeta._btn_secundario is None
+        assert pantalla._fila_carpeta._btn_principal.winfo_manager() != ""
+        assert pantalla._btn_columnas.winfo_height() <= 32
+        assert pantalla._btn_validar.winfo_height() <= 34
+        assert pantalla._btn_exportar.winfo_height() <= 34
+    finally:
+        _destruir(raiz)
+
+
 def test_baja_altura_oculta_registro_y_colapsa_totales(tmp_path, monkeypatch):
     raiz, app = _crear_app(tmp_path, monkeypatch)
     try:

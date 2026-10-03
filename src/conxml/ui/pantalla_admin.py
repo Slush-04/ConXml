@@ -763,8 +763,6 @@ class PantallaAdministracion(ctk.CTkFrame):
             self._carpeta,
             self._elegir_carpeta,
             "Carpeta(s) XML",
-            comando_secundario=self._anadir_carpeta,
-            boton_secundario="➕ Añadir",
             placeholder_text="Ruta o rutas separadas por punto y coma (ej. C:\\Carpeta1; C:\\Carpeta2)",
         )
         self._fila_carpeta.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(24, 6))
@@ -802,14 +800,13 @@ class PantallaAdministracion(ctk.CTkFrame):
             self._totales_panel = PanelResumenTotales(contenedor, al_colapsar=self._al_colapsar_totales)
         self._totales_panel.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(12, 0))
 
-        # Barra de herramientas de la tabla: selector de vista (pagos) + columnas.
-        # En ventana estrecha se usa ComboBox para no empujar "Columnas" fuera.
+        # Barra de herramientas de la tabla: solo selector de vista (pagos).
+        # "Columnas" vive con las acciones inferiores para no quitar altura a la tabla.
         barra_tabla = ctk.CTkFrame(contenedor, fg_color="transparent")
         barra_tabla.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(12, 0))
         self._barra_tabla = barra_tabla
-
-        self._btn_columnas = BotonSecundario(barra_tabla, "⚙ Columnas", self._abrir_columnas)
-        self._btn_columnas.pack(side="right")
+        if modo != MODO_PAGOS:
+            barra_tabla.grid_remove()
 
         self._seg_vista = None
         self._combo_vista = None
@@ -905,6 +902,9 @@ class PantallaAdministracion(ctk.CTkFrame):
         )
         self._chk_force.pack(side="left", padx=(16, 0))
 
+        self._btn_columnas = BotonSecundario(marco_acciones, "⚙ Columnas", self._abrir_columnas)
+        self._btn_columnas.pack(side="right")
+
         self.botones = [self._btn_leer, self._btn_validar, self._btn_exportar]
 
         # Resumen de operaciones
@@ -997,7 +997,8 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._alto_compacto = alto_compacto
         self._fila_carpeta.grid_configure(pady=(8 if alto_compacto else 24, 6))
         self._marco_acciones.grid_configure(pady=(8 if alto_compacto else 16, 0))
-        self._barra_tabla.grid_configure(pady=(6 if alto_compacto else 12, 0))
+        if self.modo == MODO_PAGOS:
+            self._barra_tabla.grid_configure(pady=(6 if alto_compacto else 12, 0))
         # Márgenes compactos para dar aire a la tabla en laptops.
         try:
             if ancho_compacto or alto_compacto:

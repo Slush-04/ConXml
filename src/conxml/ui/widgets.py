@@ -55,7 +55,7 @@ class BotonPrimario(ctk.CTkButton):
             hover_color=th.PRIMARIO_HOVER,
             text_color="#FFFFFF",
             border_width=0,
-            height=36,
+            height=34,
             corner_radius=th.RADIO_BOTON,
             font=(th.FUENTE, th.TAM_BODY, "bold"),
             **kwargs,
@@ -81,9 +81,9 @@ class BotonSecundario(ctk.CTkButton):
             text_color=th.PRIMARIO,
             border_width=1,
             border_color=th.BORDE,
-            height=36,
+            height=32,
             corner_radius=th.RADIO_BOTON,
-            font=(th.FUENTE, th.TAM_BODY),
+            font=(th.FUENTE, th.TAM_NOTA),
             **kwargs,
         )
 
@@ -323,9 +323,13 @@ class FilaArchivo(ctk.CTkFrame):
             pass
         if compacto:
             self._lbl.grid(row=0, column=0, sticky="w", padx=(0, 10))
-            self.entrada.grid(row=0, column=1, columnspan=3, sticky="ew")
-            self._btn_principal.grid(row=1, column=0, sticky="w", pady=(6, 0))
-            if self._btn_secundario is not None:
+            if self._btn_secundario is None:
+                # Sin botón secundario, Examinar permanece en la misma fila.
+                self.entrada.grid(row=0, column=1, sticky="ew")
+                self._btn_principal.grid(row=0, column=2, padx=(8, 0))
+            else:
+                self.entrada.grid(row=0, column=1, columnspan=3, sticky="ew")
+                self._btn_principal.grid(row=1, column=0, sticky="w", pady=(6, 0))
                 self._btn_secundario.grid(row=1, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
         else:
             self._lbl.grid(row=0, column=0, sticky="w", padx=(0, 10))

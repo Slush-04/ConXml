@@ -103,6 +103,7 @@ class ConXmlApp(ctk.CTkFrame):
         self._alto_compacto = False
         self._registro_oculto_auto = False
         self._resize_after: str | None = None
+        self._sidebar_visible = True
 
         master.title("ConXml — Gestor CFDI")
         try:
@@ -231,6 +232,23 @@ class ConXmlApp(ctk.CTkFrame):
         self._pantallas["ajustes"] = PantallaAjustes(self._contenido, self)
         # La pantalla inicial activa se define al llamar a navegar("resumen")
 
+        # Control flotante para recuperar el menú aunque esté oculto.
+        self._btn_sidebar = ctk.CTkButton(
+            self._contenido,
+            text="☰",
+            width=28,
+            height=26,
+            fg_color=th.FONDO_TARJETA,
+            hover_color=th.PRIMARIO_FONDO,
+            text_color=th.TEXTO_SECUNDARIO,
+            border_width=1,
+            border_color=th.BORDE,
+            corner_radius=5,
+            font=(th.FUENTE, th.TAM_NOTA, "bold"),
+            command=self.alternar_sidebar,
+        )
+        self._btn_sidebar.place(x=4, y=4)
+
         # Consola de Registro inferior (ocultable con "Ocultar detalles")
         self._barra = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
         self._barra.grid(row=1, column=1, sticky="ew", padx=24, pady=(0, 16))
@@ -358,6 +376,12 @@ class ConXmlApp(ctk.CTkFrame):
             self._pantalla_actual.al_mostrar()
         if hasattr(self._pantalla_actual, "al_alternar_detalles"):
             self._pantalla_actual.al_alternar_detalles(self._detalles_visibles)
+        # La pantalla usa tkraise(); volver a elevar el control mantiene
+        # accesible el botón de menú en todas las vistas.
+        try:
+            self._btn_sidebar.lift()
+        except Exception:
+            pass
 
     @property
     def detalles_visibles(self) -> bool:
@@ -377,6 +401,24 @@ class ConXmlApp(ctk.CTkFrame):
             return int(self._panel_lateral.cget("width"))
         except Exception:
             return resp.ANCHO_SIDEBAR if not self._ancho_compacto else resp.ANCHO_SIDEBAR_COMPACTO
+
+    @property
+    def sidebar_visible(self) -> bool:
+        return self._sidebar_visible
+
+    def alternar_sidebar(self) -> None:
+        """Oculta o muestra el menú lateral sin alterar la pantalla activa."""
+        self._sidebar_visible = not self._sidebar_visible
+        try:
+            if self._sidebar_visible:
+                self.columnconfigure(0, weight=0, minsize=0)
+                self._panel_lateral.grid()
+            else:
+                self.columnconfigure(0, weight=0, minsize=0)
+                self._panel_lateral.grid_remove()
+            self.after_idle(self._aplicar_responsive_inicial)
+        except Exception:
+            self._sidebar_visible = not self._sidebar_visible
 
     def alternar_detalles(self) -> None:
         self._registro_oculto_auto = False
