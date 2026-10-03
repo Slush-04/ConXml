@@ -21,6 +21,7 @@ class PantallaAjustes(ctk.CTkFrame):
 
         contenedor = ctk.CTkFrame(self, fg_color="transparent")
         contenedor.pack(fill="both", expand=True, padx=32, pady=24)
+        self._contenedor = contenedor
 
         Encabezado(
             contenedor,
@@ -118,6 +119,16 @@ class PantallaAjustes(ctk.CTkFrame):
             self.resumen.pack(fill="x", pady=(16, 0))
         else:
             self.resumen.pack_forget()
+
+    def aplicar_modo_compacto(self, ancho_compacto: bool, alto_compacto: bool) -> None:
+        """Márgenes compactos en laptop sin recrear widgets."""
+        try:
+            if ancho_compacto or alto_compacto:
+                self._contenedor.pack_configure(padx=12, pady=12)
+            else:
+                self._contenedor.pack_configure(padx=32, pady=24)
+        except Exception:
+            pass
 
     def al_mostrar(self) -> None:
         self.actualizar_stats()

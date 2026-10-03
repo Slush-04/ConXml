@@ -343,9 +343,12 @@ def auto_ajustar_columnas(tabla: ttk.Treeview, min_ancho: int = 70, max_ancho: i
 class PanelResumenTotales(PanelCard):
     """Panel de resumen para XML 4.0 (Totales, Vigentes, Cancelados)."""
 
-    def __init__(self, parent: ctk.CTkFrame) -> None:
+    def __init__(self, parent: ctk.CTkFrame, al_colapsar=None) -> None:
         super().__init__(parent)
         self._filas: list[dict] = []
+        self._colapsado = False
+        self._al_colapsar = al_colapsar
+        self._cambio_interno = False
 
         contenedor = ctk.CTkFrame(self, fg_color="transparent")
         contenedor.pack(fill="x", expand=True, padx=16, pady=10)
@@ -357,6 +360,15 @@ class PanelResumenTotales(PanelCard):
             header, text="RESUMEN DE TOTALES", text_color=th.TEXTO_SECUNDARIO,
             font=(th.FUENTE, th.TAM_NOTA, "bold"),
         ).pack(side="left")
+
+        self._btn_totales = ctk.CTkButton(
+            header, text="Ocultar ▾", width=90, height=26,
+            fg_color="transparent", hover_color=th.FONDO_ENTRADA,
+            text_color=th.TEXTO_SECUNDARIO, corner_radius=th.RADIO_GRUPO,
+            font=(th.FUENTE, th.TAM_NOTA, "bold"),
+            command=self.alternar_colapsado,
+        )
+        self._btn_totales.pack(side="right", padx=(8, 0))
 
         self.seg_modo = ctk.CTkSegmentedButton(
             header,
@@ -381,6 +393,7 @@ class PanelResumenTotales(PanelCard):
 
         self._labels_cnt: dict[str, ctk.CTkLabel] = {}
         self._labels_monto: dict[str, ctk.CTkLabel] = {}
+        self._tarjetas: list[ctk.CTkFrame] = []
 
         items_def = [
             ("ingresos", "Total Ingresos", th.PRIMARIO),
@@ -394,6 +407,7 @@ class PanelResumenTotales(PanelCard):
         for col, (clave, titulo, color) in enumerate(items_def):
             card_item = ctk.CTkFrame(self.grid_totales, fg_color=th.FONDO_ENTRADA, corner_radius=6)
             card_item.grid(row=0, column=col, sticky="nsew", padx=3 if col > 0 else 0)
+            self._tarjetas.append(card_item)
 
             pad = ctk.CTkFrame(card_item, fg_color="transparent")
             pad.pack(fill="both", expand=True, padx=8, pady=6)
@@ -411,6 +425,56 @@ class PanelResumenTotales(PanelCard):
             )
             lbl_m.pack(anchor="e", pady=(2, 0))
             self._labels_monto[clave] = lbl_m
+
+    @property
+    def colapsado(self) -> bool:
+        return self._colapsado
+
+    def alternar_colapsado(self) -> None:
+        self.fijar_colapsado(not self._colapsado)
+
+    def fijar_colapsado(self, colapsado: bool) -> None:
+        colapsado = bool(colapsado)
+        if colapsado == self._colapsado:
+            return
+        self._colapsado = colapsado
+        try:
+            if colapsado:
+                self.grid_totales.pack_forget()
+                self._btn_totales.configure(text="Mostrar ▸")
+            else:
+                self.grid_totales.pack(fill="x")
+                self._btn_totales.configure(text="Ocultar ▾")
+        except Exception:
+            pass
+        if not self._cambio_interno and callable(self._al_colapsar):
+            try:
+                self._al_colapsar(colapsado)
+            except Exception:
+                pass
+
+    def aplicar_compacto(self, compacto: bool) -> None:
+        """Refluye a 2 filas en ventana estrecha para no comprimir tarjetas."""
+        try:
+            for tarjeta in self._tarjetas:
+                tarjeta.grid_forget()
+            if compacto:
+                for col in range(6):
+                    self.grid_totales.columnconfigure(col, weight=0, uniform="")
+                for col in range(3):
+                    self.grid_totales.columnconfigure(col, weight=1, uniform="tot-c")
+                for i, tarjeta in enumerate(self._tarjetas):
+                    tarjeta.grid(
+                        row=i // 3, column=i % 3, sticky="nsew",
+                        padx=3 if (i % 3) > 0 else 0, pady=3 if i >= 3 else 0,
+                    )
+            else:
+                for col in range(6):
+                    self.grid_totales.columnconfigure(col, weight=1, uniform="totales")
+                for i, tarjeta in enumerate(self._tarjetas):
+                    tarjeta.grid(row=0, column=i, sticky="nsew", padx=3 if i > 0 else 0)
+        except Exception:
+            pass
 
     def actualizar(self, filas: list) -> None:
         self._filas = [dict(f) if not isinstance(f, dict) else f for f in filas]
@@ -468,8 +532,11 @@ class PanelResumenTotales(PanelCard):
 class PanelResumenPagos(PanelCard):
     """Panel de resumen para Conciliación de Pagos (PPD, P, Pagos, Doctos, Tot/Parcialmente pagadas)."""
 
-    def __init__(self, parent: ctk.CTkFrame) -> None:
+    def __init__(self, parent: ctk.CTkFrame, al_colapsar=None) -> None:
         super().__init__(parent)
+        self._colapsado = False
+        self._al_colapsar = al_colapsar
+        self._cambio_interno = False
         contenedor = ctk.CTkFrame(self, fg_color="transparent")
         contenedor.pack(fill="x", expand=True, padx=16, pady=10)
 
@@ -481,6 +548,15 @@ class PanelResumenPagos(PanelCard):
             font=(th.FUENTE, th.TAM_NOTA, "bold"),
         ).pack(side="left")
 
+        self._btn_totales = ctk.CTkButton(
+            header, text="Ocultar ▾", width=90, height=26,
+            fg_color="transparent", hover_color=th.FONDO_ENTRADA,
+            text_color=th.TEXTO_SECUNDARIO, corner_radius=th.RADIO_GRUPO,
+            font=(th.FUENTE, th.TAM_NOTA, "bold"),
+            command=self.alternar_colapsado,
+        )
+        self._btn_totales.pack(side="right")
+
         self.grid_pagos = ctk.CTkFrame(contenedor, fg_color="transparent")
         self.grid_pagos.pack(fill="x")
         for col in range(7):
@@ -488,6 +564,7 @@ class PanelResumenPagos(PanelCard):
 
         self._labels_cnt: dict[str, ctk.CTkLabel] = {}
         self._labels_monto: dict[str, ctk.CTkLabel] = {}
+        self._tarjetas: list[ctk.CTkFrame] = []
 
         items_def = [
             ("fact_ppd", "Facturas PPD", th.PRIMARIO),
@@ -502,6 +579,7 @@ class PanelResumenPagos(PanelCard):
         for col, (clave, titulo, color) in enumerate(items_def):
             card_item = ctk.CTkFrame(self.grid_pagos, fg_color=th.FONDO_ENTRADA, corner_radius=6)
             card_item.grid(row=0, column=col, sticky="nsew", padx=3 if col > 0 else 0)
+            self._tarjetas.append(card_item)
 
             pad = ctk.CTkFrame(card_item, fg_color="transparent")
             pad.pack(fill="both", expand=True, padx=8, pady=6)
@@ -519,6 +597,56 @@ class PanelResumenPagos(PanelCard):
             )
             lbl_m.pack(anchor="e", pady=(2, 0))
             self._labels_monto[clave] = lbl_m
+
+    @property
+    def colapsado(self) -> bool:
+        return self._colapsado
+
+    def alternar_colapsado(self) -> None:
+        self.fijar_colapsado(not self._colapsado)
+
+    def fijar_colapsado(self, colapsado: bool) -> None:
+        colapsado = bool(colapsado)
+        if colapsado == self._colapsado:
+            return
+        self._colapsado = colapsado
+        try:
+            if colapsado:
+                self.grid_pagos.pack_forget()
+                self._btn_totales.configure(text="Mostrar ▸")
+            else:
+                self.grid_pagos.pack(fill="x")
+                self._btn_totales.configure(text="Ocultar ▾")
+        except Exception:
+            pass
+        if not self._cambio_interno and callable(self._al_colapsar):
+            try:
+                self._al_colapsar(colapsado)
+            except Exception:
+                pass
+
+    def aplicar_compacto(self, compacto: bool) -> None:
+        """Refluye a 2 filas en ventana estrecha para no comprimir tarjetas."""
+        try:
+            for tarjeta in self._tarjetas:
+                tarjeta.grid_forget()
+            if compacto:
+                for col in range(7):
+                    self.grid_pagos.columnconfigure(col, weight=0, uniform="")
+                for col in range(4):
+                    self.grid_pagos.columnconfigure(col, weight=1, uniform="pag-c")
+                for i, tarjeta in enumerate(self._tarjetas):
+                    tarjeta.grid(
+                        row=i // 4, column=i % 4, sticky="nsew",
+                        padx=3 if (i % 4) > 0 else 0, pady=3 if i >= 4 else 0,
+                    )
+            else:
+                for col in range(7):
+                    self.grid_pagos.columnconfigure(col, weight=1, uniform="pagos")
+                for i, tarjeta in enumerate(self._tarjetas):
+                    tarjeta.grid(row=0, column=i, sticky="nsew", padx=3 if i > 0 else 0)
+        except Exception:
+            pass
 
     def actualizar(self, catalogo: Catalogo, cliente: str | None) -> None:
         comprobantes = list(catalogo.consulta(cliente=cliente))
@@ -599,7 +727,14 @@ class PantallaAdministracion(ctk.CTkFrame):
         contenedor = ctk.CTkFrame(self, fg_color="transparent")
         contenedor.pack(fill="both", expand=True, padx=32, pady=24)
         contenedor.columnconfigure(1, weight=1)
-        contenedor.rowconfigure(5, weight=1)
+        # La tabla siempre conserva al menos 150px de altura en modo compacto.
+        contenedor.rowconfigure(5, weight=1, minsize=150)
+        self._contenedor = contenedor
+        self._padx_normal, self._pady_normal = 32, 24
+        self._padx_compacto, self._pady_compacto = 12, 12
+        self._ancho_compacto = False
+        self._alto_compacto = False
+        self._totales_colapsado_auto = False
 
         if modo == MODO_CFDI40:
             titulo = "Administración de XML 4.0 (Ingresos / Egresos / Traslados)"
@@ -619,7 +754,8 @@ class PantallaAdministracion(ctk.CTkFrame):
                 "Previsualiza y exporta los comprobantes de nómina leídos en el catálogo, "
                 "con detalle de percepciones, deducciones y periodos."
             )
-        Encabezado(contenedor, titulo, subtitulo).grid(row=0, column=0, columnspan=3, sticky="ew")
+        self._encabezado = Encabezado(contenedor, titulo, subtitulo)
+        self._encabezado.grid(row=0, column=0, columnspan=3, sticky="ew")
 
         self._carpeta = tk.StringVar()
         self._fila_carpeta = FilaArchivo(
@@ -659,25 +795,30 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._btn_leer = BotonPrimario(contenedor, "Leer XMLs", self._leer)
         self._btn_leer.grid(row=2, column=2, padx=(10, 0), pady=6)
 
-        # Panel de Resumen de Totales según el modo
+        # Panel de Resumen de Totales según el modo (colapsable, con control visible).
         if modo == MODO_PAGOS:
-            self._totales_panel = PanelResumenPagos(contenedor)
+            self._totales_panel = PanelResumenPagos(contenedor, al_colapsar=self._al_colapsar_totales)
         else:
-            self._totales_panel = PanelResumenTotales(contenedor)
+            self._totales_panel = PanelResumenTotales(contenedor, al_colapsar=self._al_colapsar_totales)
         self._totales_panel.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(12, 0))
 
-        # Barra de herramientas de la tabla: selector de vista (pagos) + columnas
+        # Barra de herramientas de la tabla: selector de vista (pagos) + columnas.
+        # En ventana estrecha se usa ComboBox para no empujar "Columnas" fuera.
         barra_tabla = ctk.CTkFrame(contenedor, fg_color="transparent")
         barra_tabla.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(12, 0))
+        self._barra_tabla = barra_tabla
 
         self._btn_columnas = BotonSecundario(barra_tabla, "⚙ Columnas", self._abrir_columnas)
         self._btn_columnas.pack(side="right")
 
+        self._seg_vista = None
+        self._combo_vista = None
         if modo == MODO_PAGOS:
-            ctk.CTkLabel(
+            self._lbl_vista = ctk.CTkLabel(
                 barra_tabla, text="Vista:", text_color=th.TEXTO,
                 font=(th.FUENTE, th.TAM_BODY, "bold"),
-            ).pack(side="left")
+            )
+            self._lbl_vista.pack(side="left")
             self._seg_vista = ctk.CTkSegmentedButton(
                 barra_tabla,
                 values=[titulo for _clave, titulo in VISTAS_PAGOS],
@@ -693,11 +834,28 @@ class PantallaAdministracion(ctk.CTkFrame):
             )
             self._seg_vista.set("Conciliación")
             self._seg_vista.pack(side="left", padx=(8, 0))
+            self._combo_vista = ctk.CTkComboBox(
+                barra_tabla,
+                values=[titulo for _clave, titulo in VISTAS_PAGOS],
+                command=self._cambiar_vista,
+                fg_color=th.FONDO_ENTRADA,
+                border_color=th.BORDE,
+                corner_radius=th.RADIO_CAMPO,
+                text_color=th.TEXTO,
+                dropdown_fg_color=th.FONDO_TARJETA,
+                dropdown_text_color=th.TEXTO,
+                button_color=th.BORDE,
+                button_hover_color=th.PRIMARIO,
+                font=(th.FUENTE, th.TAM_BODY),
+                width=180,
+            )
+            self._combo_vista.set("Conciliación")
 
         marco_tabla = PanelCard(contenedor)
         marco_tabla.grid(row=5, column=0, columnspan=3, sticky="nsew", pady=(8, 0))
         marco_tabla.rowconfigure(0, weight=1)
         marco_tabla.columnconfigure(0, weight=1)
+        self._marco_tabla = marco_tabla
 
         cols_ini = self._columnas_actuales()
         self._tabla = ttk.Treeview(
@@ -719,10 +877,13 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._tabla.grid(row=0, column=0, sticky="nsew")
         scroll_y.grid(row=0, column=1, sticky="ns")
         scroll_x.grid(row=1, column=0, sticky="ew")
+        self._scroll_y = scroll_y
+        self._scroll_x = scroll_x
 
         # Fila de acciones inferiores
         marco_acciones = ctk.CTkFrame(contenedor, fg_color="transparent")
         marco_acciones.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(16, 0))
+        self._marco_acciones = marco_acciones
 
         self._btn_validar = BotonPrimario(marco_acciones, "Validar estatus", self._validar)
         self._btn_validar.pack(side="left")
@@ -785,8 +946,129 @@ class PantallaAdministracion(ctk.CTkFrame):
 
     def _mostrar_detalles_operacion(self) -> None:
         self._detalles_usados = True
+        # En poca altura no reabrir el registro global involuntariamente:
+        # respetar el control de detalles para que la tabla conserve altura.
+        try:
+            baja = bool(getattr(self.app, "_alto_compacto", False))
+        except Exception:
+            baja = False
+        if baja:
+            self._aplicar_detalles(self.app.detalles_visibles)
+            return
         self.app.mostrar_detalles(True)
         self._aplicar_detalles(True)
+
+    # ── Interfaz adaptable ──────────────────────────────────────────────
+
+    @property
+    def totales_colapsados(self) -> bool:
+        try:
+            return bool(self._totales_panel.colapsado)
+        except Exception:
+            return False
+
+    def _al_colapsar_totales(self, colapsado: bool) -> None:
+        # El usuario toggló manualmente: toma el control y cancela el auto.
+        self._totales_colapsado_auto = False
+
+    def fijar_totales_colapsados(self, colapsado: bool, auto: bool = False) -> None:
+        colapsado = bool(colapsado)
+        try:
+            self._totales_panel._cambio_interno = bool(auto)
+            self._totales_panel.fijar_colapsado(colapsado)
+        finally:
+            try:
+                self._totales_panel._cambio_interno = False
+            except Exception:
+                pass
+        if auto:
+            self._totales_colapsado_auto = colapsado
+        else:
+            self._totales_colapsado_auto = False
+
+    def aplicar_modo_compacto(self, ancho_compacto: bool, alto_compacto: bool) -> None:
+        """Ajusta márgenes, selector REP y totales sin tocar filas/selección."""
+        ancho_compacto = bool(ancho_compacto)
+        alto_compacto = bool(alto_compacto)
+        if (ancho_compacto, alto_compacto) == (self._ancho_compacto, self._alto_compacto):
+            return
+        anterior_alto = self._alto_compacto
+        self._ancho_compacto = ancho_compacto
+        self._alto_compacto = alto_compacto
+        self._fila_carpeta.grid_configure(pady=(8 if alto_compacto else 24, 6))
+        self._marco_acciones.grid_configure(pady=(8 if alto_compacto else 16, 0))
+        self._barra_tabla.grid_configure(pady=(6 if alto_compacto else 12, 0))
+        # Márgenes compactos para dar aire a la tabla en laptops.
+        try:
+            if ancho_compacto or alto_compacto:
+                self._contenedor.pack_configure(padx=self._padx_compacto, pady=self._pady_compacto)
+                self._fila_carpeta.aplicar_compacto(True)
+            else:
+                self._contenedor.pack_configure(padx=self._padx_normal, pady=self._pady_normal)
+                self._fila_carpeta.aplicar_compacto(False)
+        except Exception:
+            pass
+        # Refluir tarjetas de totales en ventana estrecha.
+        try:
+            aplicar = getattr(self._totales_panel, "aplicar_compacto", None)
+            if callable(aplicar):
+                aplicar(ancho_compacto)
+        except Exception:
+            pass
+        # Poca altura: colapsar totales automáticamente (restaurar al ampliar).
+        try:
+            if alto_compacto and not anterior_alto:
+                if not self._totales_panel.colapsado:
+                    self.fijar_totales_colapsados(True, auto=True)
+            elif not alto_compacto:
+                if self._totales_colapsado_auto and self._totales_panel.colapsado:
+                    self.fijar_totales_colapsados(False, auto=True)
+                    self._totales_colapsado_auto = False
+        except Exception:
+            pass
+        # Selector REP: ComboBox en estrecha para no empujar "Columnas".
+        try:
+            self._aplicar_selector_vista(ancho_compacto)
+        except Exception:
+            pass
+
+    def _aplicar_selector_vista(self, ancho_compacto: bool) -> None:
+        if self.modo != MODO_PAGOS or self._seg_vista is None or self._combo_vista is None:
+            return
+        if ancho_compacto:
+            try:
+                self._seg_vista.pack_forget()
+            except Exception:
+                pass
+            try:
+                if not str(self._combo_vista.winfo_manager()):
+                    pass
+            except Exception:
+                pass
+            try:
+                self._combo_vista.pack(side="left", padx=(8, 0))
+            except Exception:
+                pass
+        else:
+            try:
+                self._combo_vista.pack_forget()
+            except Exception:
+                pass
+            try:
+                self._seg_vista.pack(side="left", padx=(8, 0))
+            except Exception:
+                # Si ya estaba visible, pack lo reordena sin duplicar.
+                pass
+        # Sincronizar valor mostrado con la vista actual.
+        titulo = dict(VISTAS_PAGOS).get(self._vista, "Conciliación")
+        try:
+            self._seg_vista.set(titulo)
+        except Exception:
+            pass
+        try:
+            self._combo_vista.set(titulo)
+        except Exception:
+            pass
 
     def _columnas_actuales(self) -> list[tuple[str, str, int]]:
         if self.modo == MODO_CFDI40:
@@ -835,11 +1117,32 @@ class PantallaAdministracion(ctk.CTkFrame):
     def _cambiar_vista(self, titulo: str) -> None:
         clave = dict((t, c) for c, t in VISTAS_PAGOS).get(titulo, "conciliacion")
         if clave == self._vista:
+            # Sincronizar ambos selectores aunque no cambie la vista.
+            try:
+                if self._seg_vista is not None:
+                    self._seg_vista.set(titulo)
+            except Exception:
+                pass
+            try:
+                if self._combo_vista is not None:
+                    self._combo_vista.set(titulo)
+            except Exception:
+                pass
             return
         self._vista = clave
         self._configurar_columnas(self._columnas_actuales())
         self._gestor().aplicar()
         self._cargar_tabla()
+        try:
+            if self._seg_vista is not None:
+                self._seg_vista.set(titulo)
+        except Exception:
+            pass
+        try:
+            if self._combo_vista is not None:
+                self._combo_vista.set(titulo)
+        except Exception:
+            pass
 
     def _configurar_columnas(self, cols_def: list[tuple[str, str, int]]) -> None:
         self._tabla.configure(displaycolumns="#all")

@@ -31,7 +31,27 @@ Cuenta con una **interfaz gráfica moderna** y personalizable (GUI) y con una **
   - Construida sobre **CustomTkinter**.
   - Ocultar/mostrar y reordenar columnas con persistencia de preferencias de usuario.
   - Pestañas especializadas para comprobantes y conciliación de pagos.
+  - **Adaptable a laptops Mac/Windows**: tamaño inicial según pantalla y
+    escalado CTk (sin excederla), sidebar compacto en ventana estrecha,
+    totales colapsables y registro ocultable en poca altura, tablas con
+    scroll horizontal/vertical y selector REP en ComboBox cuando hay poco ancho.
+
 - **CLI Potente**: Comandos listos para procesar semanas contables o tareas programadas en lotes.
+
+### Interfaz adaptable (laptops)
+- Tamaño inicial ajustado a la pantalla y al escalado CTk; el tamaño mínimo
+  habitual es 880x600 y se reduce si el espacio disponible es menor.
+- `Configure` con debounce (~120 ms) y filtrado (`event.widget is root`);
+  no recrea tablas ni pierde selección/datos.
+- Ancho < 1100 px: sidebar de 240 → 140 px con etiquetas breves
+  (Resumen, XML 4.0, Pagos, Nómina, Ajustes); se recupera al ampliar.
+- Alto < 800 px: se oculta el registro y se colapsan los totales
+  (botones visibles “Mostrar ▸”); operar no los reabre solos.
+- Encabezados con `wraplength` dinámico, márgenes 32/24 → 12/12,
+  fila de carpeta apilada y 47 columnas con scroll (sin comprimir ni
+  achicar fuentes). Tabla ≥ 150 px en modo compacto.
+  Comprobado en macOS con ventanas de 900x650 hasta 1920x1080; la validación
+  en un equipo Windows real sigue pendiente.
 
 ---
 

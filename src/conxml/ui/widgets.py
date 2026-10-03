@@ -4,6 +4,7 @@ from __future__ import annotations
 import customtkinter as ctk
 
 from conxml.ui import theme as th
+from conxml.ui import responsive as resp
 
 PASO = th.PASO
 
@@ -209,20 +210,49 @@ class TarjetaAccion(PanelCard):
 
 
 class Encabezado(ctk.CTkFrame):
-    """Encabezado de sección con título, subtítulo y separador sutil."""
+    """Encabezado de sección con título, subtítulo y separador sutil.
+
+    El subtítulo (y el título si es largo) envuelven al ancho disponible
+    para no recortar texto en ventanas estrechas de laptop.
+    """
 
     def __init__(self, parent: ctk.CTkFrame, titulo: str, subtitulo: str) -> None:
         super().__init__(parent, fg_color="transparent")
-        ctk.CTkLabel(
+        self._lbl_titulo = ctk.CTkLabel(
             self, text=titulo, text_color=th.TEXTO,
-            font=(th.FUENTE, th.TAM_H1, "bold"),
-        ).pack(anchor="w")
-        ctk.CTkLabel(
+            font=(th.FUENTE, th.TAM_H1, "bold"), anchor="w", justify="left",
+            wraplength=620,
+        )
+        self._lbl_titulo.pack(anchor="w", fill="x")
+        self._lbl_sub = ctk.CTkLabel(
             self, text=subtitulo, text_color=th.TEXTO_SECUNDARIO,
-            font=(th.FUENTE, th.TAM_BODY),
-        ).pack(anchor="w", pady=(2, 0))
+            font=(th.FUENTE, th.TAM_BODY), anchor="w", justify="left",
+            wraplength=620,
+        )
+        self._lbl_sub.pack(anchor="w", fill="x", pady=(2, 0))
         sep = ctk.CTkFrame(self, height=1, fg_color=th.BORDE)
         sep.pack(fill="x", pady=(10, 0))
+        self.bind("<Configure>", self._al_configurar, add="+")
+
+    def _al_configurar(self, event) -> None:
+        if getattr(event, "widget", None) is not self:
+            return
+        self.ajustar_ancho(int((getattr(event, "width", 0) or 0) / resp.escalado_widget(self)))
+
+    def ajustar_ancho(self, ancho: int) -> None:
+        """Fija el wraplength de título/subtítulo al ancho disponible."""
+        try:
+            base = max(0, int(ancho) - 8)
+        except Exception:
+            return
+        if base <= 0:
+            return
+        wrap = max(200, base)
+        try:
+            self._lbl_titulo.configure(wraplength=wrap)
+            self._lbl_sub.configure(wraplength=wrap)
+        except Exception:
+            pass
 
 
 class FilaEtiquetada(ctk.CTkFrame):
@@ -255,9 +285,9 @@ class FilaArchivo(ctk.CTkFrame):
     ) -> None:
         super().__init__(parent, fg_color="transparent")
         self.columnconfigure(1, weight=1)
-        ctk.CTkLabel(self, text=etiqueta, text_color=th.TEXTO, font=(th.FUENTE, th.TAM_BODY)).grid(
-            row=0, column=0, sticky="w", padx=(0, 10)
-        )
+        self._compacto = False
+        self._lbl = ctk.CTkLabel(self, text=etiqueta, text_color=th.TEXTO, font=(th.FUENTE, th.TAM_BODY))
+        self._lbl.grid(row=0, column=0, sticky="w", padx=(0, 10))
         self.entrada = ctk.CTkEntry(
             self,
             textvariable=variable,
@@ -270,11 +300,39 @@ class FilaArchivo(ctk.CTkFrame):
             font=(th.FUENTE, th.TAM_BODY),
         )
         self.entrada.grid(row=0, column=1, sticky="ew")
-        BotonSecundario(self, boton, comando).grid(row=0, column=2, padx=(8, 0))
+        self._btn_principal = BotonSecundario(self, boton, comando)
+        self._btn_principal.grid(row=0, column=2, padx=(8, 0))
+        self._btn_secundario = None
         if comando_secundario is not None:
-            BotonSecundario(self, boton_secundario, comando_secundario).grid(
-                row=0, column=3, padx=(6, 0)
-            )
+            self._btn_secundario = BotonSecundario(self, boton_secundario, comando_secundario)
+            self._btn_secundario.grid(row=0, column=3, padx=(6, 0))
+
+    def aplicar_compacto(self, compacto: bool) -> None:
+        """En ventana estrecha apila los botones debajo para no recortarlos."""
+        compacto = bool(compacto)
+        if compacto == self._compacto:
+            return
+        self._compacto = compacto
+        try:
+            self._lbl.grid_forget()
+            self.entrada.grid_forget()
+            self._btn_principal.grid_forget()
+            if self._btn_secundario is not None:
+                self._btn_secundario.grid_forget()
+        except Exception:
+            pass
+        if compacto:
+            self._lbl.grid(row=0, column=0, sticky="w", padx=(0, 10))
+            self.entrada.grid(row=0, column=1, columnspan=3, sticky="ew")
+            self._btn_principal.grid(row=1, column=0, sticky="w", pady=(6, 0))
+            if self._btn_secundario is not None:
+                self._btn_secundario.grid(row=1, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
+        else:
+            self._lbl.grid(row=0, column=0, sticky="w", padx=(0, 10))
+            self.entrada.grid(row=0, column=1, sticky="ew")
+            self._btn_principal.grid(row=0, column=2, padx=(8, 0))
+            if self._btn_secundario is not None:
+                self._btn_secundario.grid(row=0, column=3, padx=(6, 0))
 
 
 class ResumenOperacion(ctk.CTkFrame):
@@ -299,7 +357,22 @@ class ResumenOperacion(ctk.CTkFrame):
             self.contenedor, text="", text_color=th.TEXTO_SECUNDARIO,
             font=(th.FUENTE, th.TAM_NOTA), wraplength=620, justify="left", anchor="w",
         )
-        self._detalle.pack(anchor="w", pady=(4, 0))
+        self._detalle.pack(anchor="w", fill="x", pady=(4, 0))
+        self.bind("<Configure>", self._al_configurar, add="+")
+        self.contenedor.bind("<Configure>", self._al_configurar, add="+")
+
+    def _al_configurar(self, event) -> None:
+        if getattr(event, "widget", None) not in (self, self.contenedor):
+            return
+        try:
+            ancho = int((getattr(event, "width", 0) or 0) / resp.escalado_widget(self))
+        except Exception:
+            return
+        if ancho > 0:
+            try:
+                self._detalle.configure(wraplength=max(200, ancho - 30))
+            except Exception:
+                pass
 
     def vaciar(self) -> None:
         self.configure(fg_color="transparent", border_width=0)

@@ -12,6 +12,7 @@ from tkinter import messagebox, scrolledtext
 import customtkinter as ctk
 
 from conxml.config import Config
+from conxml.ui import responsive as resp
 from conxml.ui import theme as th
 from conxml.ui.pantalla_admin import (
     MODO_CFDI40,
@@ -35,6 +36,30 @@ SECCIONES = [
 ]
 
 NOMBRE_ICONO = "logo_conxml"
+
+# Textos completos y breves del sidebar (compacto legible, no solo emojis).
+TEXTO_NAV_COMPLETO = {
+    "resumen": "📊 Resumen",
+    "admin40": "📄 XML 4.0 (Ingr/Egr/Tras)",
+    "pagos": "💸 Conciliación de Pagos",
+    "nomina": "👔 Recibos de Nómina",
+    "ajustes": "⚙️ Configuración y Ajustes",
+}
+TEXTO_NAV_BREVE = {
+    "resumen": "Resumen",
+    "admin40": "XML 4.0",
+    "pagos": "Pagos",
+    "nomina": "Nómina",
+    "ajustes": "Ajustes",
+}
+TITULO_GRUPO_COMPLETO = {
+    "admin_xml": "ADMINISTRACIÓN XML",
+    "sistema": "SISTEMA",
+}
+TITULO_GRUPO_BREVE = {
+    "admin_xml": "XML",
+    "sistema": "SIST",
+}
 
 
 def _ruta_icono(extension: str) -> Path | None:
@@ -73,10 +98,20 @@ class ConXmlApp(ctk.CTkFrame):
         self._cola: queue.Queue = queue.Queue()
         self._ocupada = False
         self._detalles_visibles = True
+        # Estado adaptable (no recrea tablas ni pierde selección/datos).
+        self._ancho_compacto = False
+        self._alto_compacto = False
+        self._registro_oculto_auto = False
+        self._resize_after: str | None = None
 
         master.title("ConXml — Gestor CFDI")
-        master.geometry("1020x680")
-        master.minsize(860, 580)
+        try:
+            master.geometry(resp.geometria_inicial(master))
+        except Exception:
+            master.geometry("1020x680")
+        escala = resp.escalado_widget(master, ventana=True)
+        master.minsize(min(resp.MIN_ANCHO, max(1, int(master.winfo_screenwidth() / escala - 40))),
+                       min(resp.MIN_ALTO, max(1, int(master.winfo_screenheight() / escala - 60))))
         master.columnconfigure(0, weight=1)
         master.rowconfigure(0, weight=1)
         self.grid(sticky="nsew", padx=0, pady=0)
@@ -86,7 +121,7 @@ class ConXmlApp(ctk.CTkFrame):
         # Panel lateral oscuro (Sidebar)
         self._panel_lateral = ctk.CTkFrame(
             self,
-            width=240,
+            width=resp.ANCHO_SIDEBAR,
             fg_color=th.FONDO_SIDEBAR,
             corner_radius=0,
             border_width=0,
@@ -99,11 +134,12 @@ class ConXmlApp(ctk.CTkFrame):
             text_color=th.SIDEBAR_TEXTO_ACTIVO,
             font=(th.FUENTE, th.TAM_H1, "bold"),
         ).pack(anchor="w", padx=16, pady=(24, 4))
-        ctk.CTkLabel(
+        self._lbl_subtitulo = ctk.CTkLabel(
             self._panel_lateral, text="Gestor CFDI del despacho",
             text_color=th.SIDEBAR_TEXTO,
             font=(th.FUENTE, th.TAM_NOTA),
-        ).pack(anchor="w", padx=16, pady=(0, 20))
+        )
+        self._lbl_subtitulo.pack(anchor="w", padx=16, pady=(0, 20))
 
         # Menú de navegación sin frames intermedios
         self._nav = ctk.CTkFrame(self._panel_lateral, fg_color="transparent")
@@ -170,15 +206,18 @@ class ConXmlApp(ctk.CTkFrame):
         # Información de Base de Datos en el pie del Sidebar
         marco_bd = ctk.CTkFrame(self._panel_lateral, fg_color="transparent")
         marco_bd.pack(fill="x", side="bottom", padx=16, pady=16)
-        ctk.CTkLabel(
+        self._marco_bd = marco_bd
+        self._lbl_db_titulo = ctk.CTkLabel(
             marco_bd, text="Carpeta de datos",
             text_color=th.SIDEBAR_TEXTO, font=(th.FUENTE, th.TAM_NOTA),
-        ).pack(anchor="w")
+        )
+        self._lbl_db_titulo.pack(anchor="w")
         ruta = str(self.db_path.parent)
-        ctk.CTkLabel(
+        self._lbl_db_ruta = ctk.CTkLabel(
             marco_bd, text=ruta, text_color=th.SIDEBAR_TEXTO,
             font=(th.FUENTE, th.TAM_NOTA), wraplength=200, justify="left",
-        ).pack(anchor="w", pady=(2, 0))
+        )
+        self._lbl_db_ruta.pack(anchor="w", pady=(2, 0))
 
         # Área de contenido
         self._contenido = ctk.CTkFrame(self, fg_color=th.FONDO, corner_radius=0)
@@ -239,6 +278,12 @@ class ConXmlApp(ctk.CTkFrame):
         self.after(80, self._procesar_cola)
         self._pantalla_actual: ctk.CTkFrame | tk.Frame | None = None
         self.navegar("resumen", primero=True)
+        # Adaptación al tamaño de ventana: debounce + filtrado de hijos.
+        try:
+            master.bind("<Configure>", self._al_configurar_ventana, add="+")
+        except Exception:
+            pass
+        self.after(250, self._aplicar_responsive_inicial)
 
     def _crear_boton_nav(self, parent, texto: str, comando) -> ctk.CTkButton:
         boton = ctk.CTkButton(
@@ -265,8 +310,9 @@ class ConXmlApp(ctk.CTkFrame):
             else:
                 self._botones[clave].grid_remove()
                 self._indicadores[clave].grid_remove()
+        titulo = self._titulo_grupo(clave_grupo)
         grupo["boton"].configure(
-            text=f"{'▾' if grupo['abierto'] else '▸'} {grupo['titulo']}"
+            text=f"{'▾' if grupo['abierto'] else '▸'} {titulo}"
         )
 
     def _expandir_grupo(self, clave_grupo: str) -> None:
@@ -276,7 +322,13 @@ class ConXmlApp(ctk.CTkFrame):
             for clave in grupo["hijos"]:
                 self._botones[clave].grid()
                 self._indicadores[clave].grid()
-            grupo["boton"].configure(text=f"▾ {grupo['titulo']}")
+            grupo["boton"].configure(text=f"▾ {self._titulo_grupo(clave_grupo)}")
+
+    def _titulo_grupo(self, clave_grupo: str) -> str:
+        base = TITULO_GRUPO_COMPLETO.get(clave_grupo, clave_grupo)
+        if self._ancho_compacto:
+            return TITULO_GRUPO_BREVE.get(clave_grupo, base)
+        return base
 
     def navegar(self, clave: str, primero: bool = False) -> None:
         if clave in self._grupo_de:
@@ -311,13 +363,32 @@ class ConXmlApp(ctk.CTkFrame):
     def detalles_visibles(self) -> bool:
         return self._detalles_visibles
 
+    @property
+    def sidebar_compacto(self) -> bool:
+        return self._ancho_compacto
+
+    @property
+    def baja_altura(self) -> bool:
+        return self._alto_compacto
+
+    @property
+    def ancho_sidebar(self) -> int:
+        try:
+            return int(self._panel_lateral.cget("width"))
+        except Exception:
+            return resp.ANCHO_SIDEBAR if not self._ancho_compacto else resp.ANCHO_SIDEBAR_COMPACTO
+
     def alternar_detalles(self) -> None:
+        self._registro_oculto_auto = False
         self.mostrar_detalles(not self._detalles_visibles)
 
     def mostrar_detalles(self, visible: bool, forzar: bool = False) -> None:
         """Muestra/oculta el panel de detalles (resumen de operación + registro)."""
         if not forzar and visible == self._detalles_visibles:
             return
+        # Llamada explícita: el usuario (o la operación en altura normal)
+        # toma el control; se limpia la marca de auto-ocultado.
+        self._registro_oculto_auto = False
         self._detalles_visibles = visible
         self._btn_detalles.configure(
             text="Ocultar detalles  ▾" if visible else "Mostrar detalles  ▸"
@@ -331,6 +402,108 @@ class ConXmlApp(ctk.CTkFrame):
         for pantalla in self._pantallas.values():
             if hasattr(pantalla, "al_alternar_detalles"):
                 pantalla.al_alternar_detalles(visible)
+
+    # ── Interfaz adaptable ──────────────────────────────────────────────
+
+    def _al_configurar_ventana(self, event) -> None:
+        # Filtrar eventos de hijos: solo la ventana raíz redimensiona el layout.
+        if getattr(event, "widget", None) is not self.master:
+            return
+        if self._resize_after is not None:
+            try:
+                self.after_cancel(self._resize_after)
+            except Exception:
+                pass
+        try:
+            self._resize_after = self.after(resp.RETARDO_DEBOUNCE_MS, self._aplicar_responsive_inicial)
+        except Exception:
+            self._resize_after = None
+
+    def _aplicar_responsive_inicial(self) -> None:
+        self._resize_after = None
+        try:
+            escala = resp.escalado_widget(self.master)
+            ancho = int(self.master.winfo_width() / escala)
+            alto = int(self.master.winfo_height() / escala)
+        except Exception:
+            return
+        # Al arrancar, winfo puede devolver 1x1 antes del primer layout.
+        if ancho <= 1 or alto <= 1:
+            try:
+                self.after(250, self._aplicar_responsive_inicial)
+            except Exception:
+                pass
+            return
+        self.aplicar_responsive(ancho, alto)
+
+    def aplicar_responsive(self, ancho: int, alto: int) -> None:
+        """Adapta sidebar, registro y totales sin recrear tablas ni perder datos."""
+        try:
+            ancho = int(ancho)
+            alto = int(alto)
+        except Exception:
+            return
+        estrecha = resp.debe_usar_sidebar_compacto(ancho)
+        baja = resp.debe_usar_modo_baja_altura(alto)
+        if estrecha != self._ancho_compacto:
+            self._ancho_compacto = estrecha
+            self._aplicar_sidebar(estrecha)
+        if baja != self._alto_compacto:
+            self._alto_compacto = baja
+            self._aplicar_modo_altura(baja)
+        # Propagar modo compacto a las pantallas (márgenes, selector REP, etc.)
+        for pantalla in self._pantallas.values():
+            aplicar = getattr(pantalla, "aplicar_modo_compacto", None)
+            if callable(aplicar):
+                try:
+                    aplicar(self._ancho_compacto, self._alto_compacto)
+                except Exception:
+                    pass
+
+    def _aplicar_sidebar(self, compacto: bool) -> None:
+        ancho = resp.ANCHO_SIDEBAR_COMPACTO if compacto else resp.ANCHO_SIDEBAR
+        try:
+            self._panel_lateral.configure(width=ancho)
+        except Exception:
+            pass
+        for clave, boton in self._botones.items():
+            texto = (TEXTO_NAV_BREVE if compacto else TEXTO_NAV_COMPLETO).get(clave)
+            if texto is not None:
+                try:
+                    boton.configure(text=texto)
+                except Exception:
+                    pass
+        for clave_grupo, grupo in self._grupos.items():
+            titulo = (TITULO_GRUPO_BREVE if compacto else TITULO_GRUPO_COMPLETO).get(
+                clave_grupo, grupo.get("titulo", clave_grupo)
+            )
+            marca = "▾" if grupo.get("abierto", True) else "▸"
+            try:
+                grupo["boton"].configure(text=f"{marca} {titulo}")
+            except Exception:
+                pass
+        try:
+            if compacto:
+                self._lbl_subtitulo.pack_forget()
+                self._lbl_db_ruta.configure(wraplength=ancho - 32)
+            else:
+                self._lbl_subtitulo.pack(anchor="w", padx=16, pady=(0, 20))
+                self._lbl_db_ruta.configure(wraplength=200)
+        except Exception:
+            pass
+
+    def _aplicar_modo_altura(self, baja: bool) -> None:
+        if baja:
+            # Poca altura: ocultar el registro para dar prioridad a la tabla.
+            # Se marca como auto-ocultado para restaurarlo al ampliar.
+            if self._detalles_visibles:
+                self._registro_oculto_auto = False
+                self.mostrar_detalles(False)
+                self._registro_oculto_auto = True
+        else:
+            if self._registro_oculto_auto:
+                self._registro_oculto_auto = False
+                self.mostrar_detalles(True)
 
     def actualizar_resumen(self) -> None:
         self._pantallas["resumen"].actualizar_metricas()
