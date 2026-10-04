@@ -1,5 +1,7 @@
 import hashlib
 import json
+import os
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -126,6 +128,8 @@ def test_numeric_version_order():
         version_tuple('v1.2.3-beta')
 
 
+@pytest.mark.skipif(sys.platform == 'win32' and os.environ.get('GITHUB_ACTIONS') == 'true',
+                    reason='La prueba de interfaz gráfica es para macOS; Windows valida lógica y descargas HTTP.')
 def test_download_icon_and_ui_flow_on_mac(feed, tmp_path, monkeypatch):
     import subprocess
     import sys
