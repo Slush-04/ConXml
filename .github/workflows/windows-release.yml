@@ -49,7 +49,12 @@ jobs:
           if ($LASTEXITCODE -eq 0) { throw "La versión ya existe; no sobrescribir una publicación." }
           gh release create $tag $exe "$exe.sha256" --target '${{ github.sha }}' --draft --title "ConXml $env:CONXML_RELEASE_VERSION" --notes "Instalador Windows x64. Conserva los datos locales."
           if ($LASTEXITCODE -ne 0) { throw "Falló la carga de la versión." }
-          $asset = gh api "repos/${{ github.repository }}/releases/tags/$tag" --jq '.assets[] | select(.name | endswith(".exe")) | .digest'
+          # GitHub's get-by-tag endpoint does not return drafts. Find this draft
+          # via the authenticated releases collection, then use its release ID.
+          $releaseId = gh api "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.tag_name == `"$tag`") | .id"
+          if (-not $releaseId) { throw "No se encontró el borrador de la versión." }
+          $releaseId = $releaseId.Trim()
+          $asset = gh api "repos/${{ github.repository }}/releases/$releaseId" --jq '.assets[] | select(.name | endswith(".exe")) | .digest'
           $expected = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
           if ($asset -ne "sha256:$expected") { throw "Digest ausente o incorrecto; queda en borrador." }
           # La cola no garantiza orden FIFO: un build anterior tardío no debe
@@ -59,5 +64,5 @@ jobs:
           if ($LASTEXITCODE -eq 0 -and [version]$latest.TrimStart('v') -gt [version]$env:CONXML_RELEASE_VERSION) {
             $makeLatest = 'false'
           }
-          gh release edit $tag --draft=false "--latest=$makeLatest"
+          gh api --method PATCH "repos/${{ github.repository }}/releases/$releaseId" -F draft=false -f "make_latest=$makeLatest" | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "No se pudo publicar." }
