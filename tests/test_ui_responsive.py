@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import tkinter as tk
 import types
+from pathlib import Path
 
 import pytest
 
@@ -145,13 +146,122 @@ def test_sidebar_se_puede_ocultar_y_recuperar(tmp_path, monkeypatch):
         _destruir(raiz)
 
 
+def test_selector_clientes_es_ventana_separada_y_abre_contexto(tmp_path, monkeypatch):
+    ctk = _requiere_ctk()
+    monkeypatch.setenv("CONXML_DATA_DIR", str(tmp_path))
+    from conxml.catalog.db import Catalogo
+    from conxml.config import Config
+    from conxml.ui.app import ConXmlApp, _mostrar_selector_clientes
+
+    ruta_db = Config().db_path
+    with Catalogo(ruta_db) as catalogo:
+        catalogo.crear_cliente("CLI-01", "Cliente de prueba", "XAXX010101000")
+
+    try:
+        raiz = ctk.CTk()
+    except tk.TclError:
+        pytest.skip("sin display disponible")
+    raiz.withdraw()
+    try:
+        seleccion = []
+        selector = _mostrar_selector_clientes(raiz, seleccion.append, ruta_db)
+        raiz.update_idletasks()
+        assert selector.winfo_exists()
+        assert selector.winfo_viewable() == 1
+        assert selector.title() == "ConXml — Seleccionar cliente"
+        pantalla = selector.winfo_children()[0]
+        pantalla._tabla.selection_set("CLI-01")
+        pantalla._entrar()
+        raiz.update_idletasks()
+        assert seleccion == ["CLI-01"]
+
+        app = ConXmlApp(raiz, cliente_actual="CLI-01")
+        raiz.update_idletasks()
+        assert app._pantalla_actual is app._pantallas["resumen"]
+    finally:
+        _destruir(raiz)
+
+
+def test_busqueda_clientes_y_contexto_activo_en_sidebar(tmp_path, monkeypatch):
+    ctk = _requiere_ctk()
+    monkeypatch.setenv("CONXML_DATA_DIR", str(tmp_path))
+    from conxml.catalog.db import Catalogo
+    from conxml.config import Config
+    from conxml.ui.app import ConXmlApp
+
+    ruta_db = Config().db_path
+    with Catalogo(ruta_db) as catalogo:
+        catalogo.crear_cliente("CLI-01", "Despacho Norte", "AAA010101AAA")
+        catalogo.crear_cliente("CLI-02", "Despacho Sur", "BBB010101BBB")
+    try:
+        raiz = ctk.CTk()
+    except tk.TclError:
+        pytest.skip("sin display disponible")
+    try:
+        app = ConXmlApp(raiz, cliente_actual="CLI-01")
+        raiz.update_idletasks()
+        assert "Despacho Norte" in app._lbl_cliente.cget("text")
+
+        pantalla = app._pantallas["clientes"]
+        pantalla.al_mostrar()
+        pantalla._busqueda.set("BBB")
+        raiz.update_idletasks()
+        filas = pantalla._tabla.get_children()
+        assert filas == ("CLI-02",)
+        assert pantalla._lbl_conteo.cget("text") == "1 de 2 clientes"
+    finally:
+        _destruir(raiz)
+
+
+def test_boveda_busca_carpeta_externa_y_filtra_origen(tmp_path, monkeypatch):
+    ctk = _requiere_ctk()
+    monkeypatch.setenv("CONXML_DATA_DIR", str(tmp_path))
+    from shutil import copy2
+    from conxml.boveda import ocultar_instrucciones_boveda
+    from conxml.catalog.db import Catalogo
+    from conxml.config import Config
+    from conxml.ui.app import ConXmlApp
+
+    ruta_db = Config().db_path
+    with Catalogo(ruta_db) as catalogo:
+        catalogo.crear_cliente("CLI-01", "Cliente de prueba", "EKU9003173C9")
+    externa = tmp_path / "externa"
+    externa.mkdir()
+    copy2(Path(__file__).parent / "fixtures" / "ingreso_iva.xml", externa / "factura.xml")
+    ocultar_instrucciones_boveda(Config())
+
+    try:
+        raiz = ctk.CTk()
+    except tk.TclError:
+        pytest.skip("sin display disponible")
+    try:
+        app = ConXmlApp(raiz, cliente_actual="CLI-01")
+        app.navegar("boveda")
+        pantalla = app._pantallas["boveda"]
+        pantalla._origen.set(str(externa))
+        pantalla._origen_externo = True
+        pantalla._actualizar_estado_filtros()
+        pantalla._actualizar_lista()
+        raiz.update_idletasks()
+        assert len(pantalla._archivos_actuales) == 1
+        assert pantalla._tabla.item(pantalla._tabla.get_children()[0], "values")[0] == "Carpeta"
+        assert pantalla._combo_anio.cget("state") == "disabled"
+
+        pantalla._direccion.set("Emitidos")
+        pantalla._cambiar_origen()
+        assert pantalla._combo_anio.cget("state") == "normal"
+    finally:
+        _destruir(raiz)
+
+
 def test_columnas_compartido_con_acciones_y_sin_anadir(tmp_path, monkeypatch):
     raiz, app = _crear_app(tmp_path, monkeypatch)
     try:
         app.navegar("admin40")
         raiz.update_idletasks()
         pantalla = app._pantallas["admin40"]
-        assert pantalla._barra_tabla.winfo_manager() == ""
+        assert pantalla._barra_tabla.winfo_manager() == "grid"
+        assert set(pantalla._filtros) == {"uuid", "rfc", "serie", "folio"}
         assert pantalla._btn_columnas.winfo_parent() == str(pantalla._marco_acciones)
         assert pantalla._fila_carpeta._btn_secundario is None
         assert pantalla._fila_carpeta._btn_principal.winfo_manager() != ""

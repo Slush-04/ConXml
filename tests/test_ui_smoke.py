@@ -39,7 +39,9 @@ def test_ui_arranca_con_display():
         from conxml.ui.app import ConXmlApp
 
         ventana = ConXmlApp(raiz)
-        raiz.update()
+        # No ejecutar todos los temporizadores periódicos de la app durante
+        # el smoke test; basta comprobar que la geometría inicial se resuelve.
+        raiz.update_idletasks()
         assert ventana.winfo_exists()
     finally:
         raiz.destroy()

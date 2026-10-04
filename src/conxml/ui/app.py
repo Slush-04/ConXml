@@ -11,6 +11,8 @@ from tkinter import messagebox, scrolledtext
 
 import customtkinter as ctk
 
+from conxml.boveda import inicializar_boveda
+from conxml.catalog.db import Catalogo
 from conxml.config import Config
 from conxml.ui import responsive as resp
 from conxml.ui import theme as th
@@ -21,16 +23,21 @@ from conxml.ui.pantalla_admin import (
     PantallaAdministracion,
 )
 from conxml.ui.pantalla_ajustes import PantallaAjustes
+from conxml.ui.pantalla_boveda import PantallaBoveda
+from conxml.ui.pantalla_clientes import PantallaClientes
+from conxml.ui.pantalla_descargas import PantallaDescargas
 from conxml.ui.pantalla_resumen import PantallaResumen
 from conxml.ui.widgets import PanelCard
 
 SECCIONES = [
     ("admin_xml", "ADMINISTRACIÓN XML", [
+        ("descargas", "⬇ Descarga de XML"),
         ("admin40", "📄 XML 4.0 (Ingr/Egr/Tras)"),
         ("pagos", "💸 Conciliación de Pagos"),
         ("nomina", "👔 Recibos de Nómina"),
     ]),
     ("sistema", "SISTEMA", [
+        ("clientes", "👥 Cambiar cliente"),
         ("ajustes", "⚙️ Configuración y Ajustes"),
     ]),
 ]
@@ -39,18 +46,24 @@ NOMBRE_ICONO = "logo_conxml"
 
 # Textos completos y breves del sidebar (compacto legible, no solo emojis).
 TEXTO_NAV_COMPLETO = {
+    "descargas": "⬇ Descarga de XML",
     "resumen": "📊 Resumen",
     "admin40": "📄 XML 4.0 (Ingr/Egr/Tras)",
     "pagos": "💸 Conciliación de Pagos",
     "nomina": "👔 Recibos de Nómina",
     "ajustes": "⚙️ Configuración y Ajustes",
+    "clientes": "Cambiar cliente",
+    "boveda": "🗄️ Bóveda",
 }
 TEXTO_NAV_BREVE = {
+    "descargas": "Descargas",
     "resumen": "Resumen",
     "admin40": "XML 4.0",
     "pagos": "Pagos",
     "nomina": "Nómina",
     "ajustes": "Ajustes",
+    "clientes": "Cliente",
+    "boveda": "Bóveda",
 }
 TITULO_GRUPO_COMPLETO = {
     "admin_xml": "ADMINISTRACIÓN XML",
@@ -91,7 +104,7 @@ def _aplicar_icono(raiz: ctk.CTk) -> None:
 
 
 class ConXmlApp(ctk.CTkFrame):
-    def __init__(self, master: ctk.CTk) -> None:
+    def __init__(self, master: ctk.CTk, cliente_actual: str | None = None) -> None:
         super().__init__(master, fg_color=th.FONDO, corner_radius=0)
         self.master = master
         self.db_path = Config().db_path
@@ -104,6 +117,7 @@ class ConXmlApp(ctk.CTkFrame):
         self._registro_oculto_auto = False
         self._resize_after: str | None = None
         self._sidebar_visible = True
+        self.cliente_actual: str | None = cliente_actual
 
         master.title("ConXml — Gestor CFDI")
         try:
@@ -142,6 +156,21 @@ class ConXmlApp(ctk.CTkFrame):
         )
         self._lbl_subtitulo.pack(anchor="w", padx=16, pady=(0, 20))
 
+        self._marco_cliente = ctk.CTkFrame(
+            self._panel_lateral, fg_color=th.SIDEBAR_HOVER, corner_radius=6
+        )
+        self._marco_cliente.pack(fill="x", padx=10, pady=(0, 14))
+        ctk.CTkLabel(
+            self._marco_cliente, text="CLIENTE ACTIVO", text_color=th.SIDEBAR_TEXTO,
+            font=(th.FUENTE, 9, "bold"), anchor="w",
+        ).pack(anchor="w", padx=10, pady=(7, 0))
+        self._lbl_cliente = ctk.CTkLabel(
+            self._marco_cliente, text="Selecciona un cliente",
+            text_color=th.SIDEBAR_TEXTO_ACTIVO, font=(th.FUENTE, th.TAM_NOTA, "bold"),
+            anchor="w", justify="left", wraplength=190,
+        )
+        self._lbl_cliente.pack(anchor="w", fill="x", padx=10, pady=(1, 8))
+
         # Menú de navegación sin frames intermedios
         self._nav = ctk.CTkFrame(self._panel_lateral, fg_color="transparent")
         self._nav.pack(fill="x", padx=4)
@@ -164,9 +193,18 @@ class ConXmlApp(ctk.CTkFrame):
         self._botones["resumen"] = boton_resumen
         self._indicadores["resumen"] = resumen_indicator
 
+        boveda_indicator = ctk.CTkFrame(
+            self._nav, width=4, height=32, fg_color="transparent", corner_radius=2
+        )
+        boveda_indicator.grid(row=1, column=0, sticky="ns", padx=(4, 0), pady=1)
+        boton_boveda = self._crear_boton_nav(self._nav, "🗄️ Bóveda", lambda: self.navegar("boveda"))
+        boton_boveda.grid(row=1, column=1, sticky="ew", padx=(0, 6), pady=1)
+        self._botones["boveda"] = boton_boveda
+        self._indicadores["boveda"] = boveda_indicator
+
         self._grupos: dict[str, dict] = {}
         self._grupo_de: dict[str, str] = {}
-        fila = 1
+        fila = 2
         for clave_grupo, titulo, hijos in SECCIONES:
             boton_grupo = ctk.CTkButton(
                 self._nav,
@@ -189,7 +227,8 @@ class ConXmlApp(ctk.CTkFrame):
                 )
                 indicator.grid(row=fila, column=0, sticky="ns", padx=(4, 0), pady=1)
 
-                sub = self._crear_boton_nav(self._nav, texto, lambda c=clave: self.navegar(c))
+                comando = self.cambiar_cliente if clave == "clientes" else lambda c=clave: self.navegar(c)
+                sub = self._crear_boton_nav(self._nav, texto, comando)
                 sub.grid(row=fila, column=1, sticky="ew", padx=(0, 6), pady=1)
 
                 self._botones[clave] = sub
@@ -225,7 +264,10 @@ class ConXmlApp(ctk.CTkFrame):
         self._contenido.grid(row=0, column=1, sticky="nsew")
 
         self._pantallas: dict[str, ctk.CTkFrame | tk.Frame] = {}
+        self._pantallas["clientes"] = PantallaClientes(self._contenido, self)
         self._pantallas["resumen"] = PantallaResumen(self._contenido, self)
+        self._pantallas["boveda"] = PantallaBoveda(self._contenido, self)
+        self._pantallas["descargas"] = PantallaDescargas(self._contenido, self)
         self._pantallas["admin40"] = PantallaAdministracion(self._contenido, self, modo=MODO_CFDI40)
         self._pantallas["pagos"] = PantallaAdministracion(self._contenido, self, modo=MODO_PAGOS)
         self._pantallas["nomina"] = PantallaAdministracion(self._contenido, self, modo=MODO_NOMINA)
@@ -235,9 +277,9 @@ class ConXmlApp(ctk.CTkFrame):
         # Control flotante para recuperar el menú aunque esté oculto.
         self._btn_sidebar = ctk.CTkButton(
             self._contenido,
-            text="☰",
-            width=28,
-            height=26,
+            text="☰ Menú",
+            width=76,
+            height=30,
             fg_color=th.FONDO_TARJETA,
             hover_color=th.PRIMARIO_FONDO,
             text_color=th.TEXTO_SECUNDARIO,
@@ -295,7 +337,10 @@ class ConXmlApp(ctk.CTkFrame):
         master.protocol("WM_DELETE_WINDOW", self._al_cerrar)
         self.after(80, self._procesar_cola)
         self._pantalla_actual: ctk.CTkFrame | tk.Frame | None = None
-        self.navegar("resumen", primero=True)
+        self.navegar("resumen" if self.cliente_actual else "clientes", primero=True)
+        if self.cliente_actual:
+            inicializar_boveda(Config(), self.cliente_actual)
+        self._actualizar_cliente_sidebar()
         # Adaptación al tamaño de ventana: debounce + filtrado de hijos.
         try:
             master.bind("<Configure>", self._al_configurar_ventana, add="+")
@@ -360,12 +405,13 @@ class ConXmlApp(ctk.CTkFrame):
             if k in self._indicadores:
                 self._indicadores[k].configure(fg_color="transparent")
 
-        self._botones[clave].configure(
-            fg_color=th.SIDEBAR_HOVER, text_color=th.SIDEBAR_TEXTO_ACTIVO,
-            font=(th.FUENTE, th.TAM_BODY, "bold"),
-        )
-        if clave in self._indicadores:
-            self._indicadores[clave].configure(fg_color=th.SIDEBAR_ACENTO)
+        if clave in self._botones:
+            self._botones[clave].configure(
+                fg_color=th.SIDEBAR_HOVER, text_color=th.SIDEBAR_TEXTO_ACTIVO,
+                font=(th.FUENTE, th.TAM_BODY, "bold"),
+            )
+            if clave in self._indicadores:
+                self._indicadores[clave].configure(fg_color=th.SIDEBAR_ACENTO)
 
         for p in self._pantallas.values():
             p.place_forget()
@@ -382,6 +428,35 @@ class ConXmlApp(ctk.CTkFrame):
             self._btn_sidebar.lift()
         except Exception:
             pass
+
+    def seleccionar_cliente(self, clave: str) -> None:
+        """Fija el cliente de trabajo y entra al resumen principal."""
+        self.cliente_actual = clave
+        inicializar_boveda(Config(), clave)
+        self._actualizar_cliente_sidebar()
+        self.navegar("resumen")
+
+    def _actualizar_cliente_sidebar(self) -> None:
+        texto = self.cliente_actual or "Selecciona un cliente"
+        if self.cliente_actual:
+            try:
+                with Catalogo(self.db_path) as catalogo:
+                    cliente = catalogo.obtener_cliente(self.cliente_actual)
+                if cliente:
+                    texto = f"{cliente['nombre']}\n{cliente['clave']}"
+            except Exception:
+                pass
+        try:
+            self._lbl_cliente.configure(text=texto)
+        except Exception:
+            pass
+
+    def cambiar_cliente(self) -> None:
+        self._selector_clientes = _mostrar_selector_clientes(
+            self.master,
+            self.seleccionar_cliente,
+            self.db_path,
+        )
 
     @property
     def detalles_visibles(self) -> bool:
@@ -527,9 +602,11 @@ class ConXmlApp(ctk.CTkFrame):
         try:
             if compacto:
                 self._lbl_subtitulo.pack_forget()
+                self._marco_cliente.pack_forget()
                 self._lbl_db_ruta.configure(wraplength=ancho - 32)
             else:
                 self._lbl_subtitulo.pack(anchor="w", padx=16, pady=(0, 20))
+                self._marco_cliente.pack(fill="x", padx=10, pady=(0, 14), before=self._nav)
                 self._lbl_db_ruta.configure(wraplength=200)
         except Exception:
             pass
@@ -648,5 +725,76 @@ def main() -> None:
     raiz = ctk.CTk()
     raiz.configure(fg_color=th.FONDO)
     _aplicar_icono(raiz)
-    ConXmlApp(raiz)
+    # La selección de cliente es la primera ventana. La ventana principal se
+    # construye después de seleccionar para que siempre arranque con contexto.
+    raiz.withdraw()
+
+    def abrir_programa(clave: str) -> None:
+        raiz.deiconify()
+        raiz._conxml_app = ConXmlApp(raiz, cliente_actual=clave)
+
+    selector = _mostrar_selector_clientes(
+        raiz,
+        abrir_programa,
+        Config().db_path,
+        on_close=raiz.destroy,
+    )
+    raiz._selector_clientes = selector
     raiz.mainloop()
+
+
+def _mostrar_selector_clientes(parent, on_selected, db_path, on_close=None):
+    """Abre el catálogo de clientes como ventana modal reutilizable."""
+    selector = ctk.CTkToplevel(parent)
+    selector.title("ConXml — Seleccionar cliente")
+    selector.geometry("900x650")
+    selector.minsize(760, 520)
+    selector.configure(fg_color=th.FONDO)
+    _aplicar_icono(selector)
+    selector.transient(parent)
+
+    cerrado = False
+
+    def cerrar() -> None:
+        nonlocal cerrado
+        if cerrado:
+            return
+        cerrado = True
+        try:
+            selector.grab_release()
+        except tk.TclError:
+            pass
+        try:
+            selector.destroy()
+        finally:
+            if on_close is not None:
+                on_close()
+
+    def seleccionar(clave: str) -> None:
+        cerrar_sin_callback()
+        on_selected(clave)
+
+    def cerrar_sin_callback() -> None:
+        nonlocal cerrado
+        if cerrado:
+            return
+        cerrado = True
+        try:
+            selector.grab_release()
+        except tk.TclError:
+            pass
+        selector.destroy()
+
+    selector.protocol("WM_DELETE_WINDOW", cerrar)
+    pantalla = PantallaClientes(selector, app=None, on_selected=seleccionar, db_path=db_path)
+    pantalla.pack(fill="both", expand=True)
+    pantalla.al_mostrar()
+    try:
+        # En macOS, un Toplevel cuyo padre está oculto puede nacer como
+        # ``withdrawn``; mostrarlo explícitamente evita un proceso sin ventana.
+        selector.deiconify()
+        selector.grab_set()
+        selector.focus_force()
+    except tk.TclError:
+        pass
+    return selector

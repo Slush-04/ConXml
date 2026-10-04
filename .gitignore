@@ -55,6 +55,7 @@ Thumbs.db
 desktop.ini
 .idea/
 .vscode/
+.ai-work/
 
 # PyInstaller temporary debug specs (keep main conxml.spec)
 conxml-*.spec

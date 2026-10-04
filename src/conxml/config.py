@@ -39,3 +39,13 @@ class Config:
     @property
     def carpeta_entrada(self) -> Path:
         return self.base / "muestra"
+
+    @property
+    def carpeta_boveda(self) -> Path:
+        """Raíz del archivo organizado de XML por cliente, tipo y periodo."""
+        return self.base / "boveda"
+
+    @property
+    def preferencias_path(self) -> Path:
+        """Preferencias locales de la interfaz, separadas del catálogo SQLite."""
+        return self.base / "preferencias.json"

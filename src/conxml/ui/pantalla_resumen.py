@@ -17,6 +17,8 @@ from conxml.ui.widgets import (
 )
 
 ACCIONES = [
+    ("boveda", "Bóveda de XML",
+     "Guarda XML en carpetas ordenadas por tipo, año y mes, y carga solo la selección que necesitas."),
     ("admin40", "Administración de XML 4.0",
      "Lee los XML de una carpeta, previsualiza su información, valida estatus SAT "
      "y exporta el listado completo a Excel."),
@@ -36,11 +38,12 @@ class PantallaResumen(ctk.CTkFrame):
         self._contenedor.pack(fill="both", expand=True, padx=32, pady=24)
         self._contenedor.columnconfigure(0, weight=1)
 
-        Encabezado(
+        self._encabezado = Encabezado(
             self._contenedor,
             "ConXml — Catálogo de comprobantes",
             "Importa los XML de tus clientes, valida su estatus ante el SAT y genera los reportes Excel.",
-        ).pack(anchor="w", fill="x")
+        )
+        self._encabezado.pack(anchor="w", fill="x")
 
         ctk.CTkLabel(
             self._contenedor, text="RESUMEN DEL CATÁLOGO",
@@ -86,6 +89,14 @@ class PantallaResumen(ctk.CTkFrame):
             pass
 
     def al_mostrar(self) -> None:
+        if self.app.cliente_actual:
+            with Catalogo(self.app.db_path) as catalogo:
+                cliente = catalogo.obtener_cliente(self.app.cliente_actual)
+            if cliente:
+                self._encabezado._lbl_sub.configure(
+                    text=f"Cliente activo: {cliente['nombre']} ({cliente['clave']}). "
+                    "Administra sus XML, valida SAT y genera reportes."
+                )
         self.actualizar_metricas()
 
     def actualizar_metricas(self) -> None:

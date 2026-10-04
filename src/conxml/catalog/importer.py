@@ -53,6 +53,10 @@ def importar_carpetas(
         p_carpeta = Path(c)
         if p_carpeta.is_dir():
             archivos.extend(p for p in p_carpeta.rglob("*") if p.is_file() and p.suffix.lower() == ".xml")
+        elif p_carpeta.is_file() and p_carpeta.suffix.lower() == ".xml":
+            # La bóveda puede entregar una selección exacta de archivos,
+            # no solamente carpetas completas.
+            archivos.append(p_carpeta)
 
     for archivo in sorted(set(archivos)):
         resultado.procesados += 1

@@ -728,7 +728,7 @@ class PantallaAdministracion(ctk.CTkFrame):
         contenedor.pack(fill="both", expand=True, padx=32, pady=24)
         contenedor.columnconfigure(1, weight=1)
         # La tabla siempre conserva al menos 150px de altura en modo compacto.
-        contenedor.rowconfigure(5, weight=1, minsize=150)
+        contenedor.rowconfigure(4, weight=1, minsize=150)
         self._contenedor = contenedor
         self._padx_normal, self._pady_normal = 32, 24
         self._padx_compacto, self._pady_compacto = 12, 12
@@ -765,48 +765,37 @@ class PantallaAdministracion(ctk.CTkFrame):
             "Carpeta(s) XML",
             placeholder_text="Ruta o rutas separadas por punto y coma (ej. C:\\Carpeta1; C:\\Carpeta2)",
         )
-        self._fila_carpeta.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(24, 6))
-
-        ctk.CTkLabel(
-            contenedor, text="Cliente (vacío = todos):", text_color=th.TEXTO,
-            font=(th.FUENTE, th.TAM_BODY),
-        ).grid(row=2, column=0, sticky="w", padx=(0, 10), pady=6)
-
-        self._cliente = tk.StringVar()
-        self._combo_cliente = ctk.CTkComboBox(
-            contenedor,
-            values=[],
-            variable=self._cliente,
-            fg_color=th.FONDO_ENTRADA,
-            border_color=th.BORDE,
-            corner_radius=th.RADIO_CAMPO,
-            text_color=th.TEXTO,
-            dropdown_fg_color=th.FONDO_TARJETA,
-            dropdown_hover_color=th.PRIMARIO_FONDO,
-            dropdown_text_color=th.TEXTO,
-            button_color=th.BORDE,
-            button_hover_color=th.PRIMARIO,
-            font=(th.FUENTE, th.TAM_BODY),
-        )
-        self._combo_cliente.grid(row=2, column=1, sticky="ew", pady=6)
-
+        self._fila_carpeta.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(24, 6))
         self._btn_leer = BotonPrimario(contenedor, "Leer XMLs", self._leer)
-        self._btn_leer.grid(row=2, column=2, padx=(10, 0), pady=6)
+        self._btn_leer.grid(row=1, column=2, padx=(10, 0), pady=6, sticky="e")
 
         # Panel de Resumen de Totales según el modo (colapsable, con control visible).
         if modo == MODO_PAGOS:
             self._totales_panel = PanelResumenPagos(contenedor, al_colapsar=self._al_colapsar_totales)
         else:
             self._totales_panel = PanelResumenTotales(contenedor, al_colapsar=self._al_colapsar_totales)
-        self._totales_panel.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(12, 0))
+        self._totales_panel.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(12, 0))
 
         # Barra de herramientas de la tabla: solo selector de vista (pagos).
         # "Columnas" vive con las acciones inferiores para no quitar altura a la tabla.
         barra_tabla = ctk.CTkFrame(contenedor, fg_color="transparent")
-        barra_tabla.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(12, 0))
+        barra_tabla.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(12, 0))
         self._barra_tabla = barra_tabla
-        if modo != MODO_PAGOS:
-            barra_tabla.grid_remove()
+        self._filtros = {}
+        for clave, texto in (("uuid", "UUID"), ("rfc", "RFC"), ("serie", "Serie"), ("folio", "Folio")):
+            entrada = ctk.CTkEntry(barra_tabla, width=118, placeholder_text=texto)
+            entrada.pack(side="left", padx=(0, 5))
+            self._filtros[clave] = entrada
+        BotonSecundario(barra_tabla, "Filtrar", self._aplicar_filtros).pack(side="left", padx=(0, 8))
+        self._btn_limpiar_filtros = BotonSecundario(
+            barra_tabla, "Limpiar", self._limpiar_filtros
+        )
+        self._btn_limpiar_filtros.pack(side="left")
+        self._lbl_resultados = ctk.CTkLabel(
+            barra_tabla, text="0 registros", text_color=th.TEXTO_SECUNDARIO,
+            font=(th.FUENTE, th.TAM_NOTA),
+        )
+        self._lbl_resultados.pack(side="right")
 
         self._seg_vista = None
         self._combo_vista = None
@@ -849,7 +838,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             self._combo_vista.set("Conciliación")
 
         marco_tabla = PanelCard(contenedor)
-        marco_tabla.grid(row=5, column=0, columnspan=3, sticky="nsew", pady=(8, 0))
+        marco_tabla.grid(row=4, column=0, columnspan=3, sticky="nsew", pady=(8, 0))
         marco_tabla.rowconfigure(0, weight=1)
         marco_tabla.columnconfigure(0, weight=1)
         self._marco_tabla = marco_tabla
@@ -879,7 +868,7 @@ class PantallaAdministracion(ctk.CTkFrame):
 
         # Fila de acciones inferiores
         marco_acciones = ctk.CTkFrame(contenedor, fg_color="transparent")
-        marco_acciones.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(16, 0))
+        marco_acciones.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(16, 0))
         self._marco_acciones = marco_acciones
 
         self._btn_validar = BotonPrimario(marco_acciones, "Validar estatus", self._validar)
@@ -909,7 +898,7 @@ class PantallaAdministracion(ctk.CTkFrame):
 
         # Resumen de operaciones
         self._resumen = ResumenOperacion(contenedor)
-        self._resumen.grid(row=7, column=0, columnspan=3, sticky="ew", pady=(16, 0))
+        self._resumen.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(16, 0))
 
         # Progreso
         self._progreso = ctk.CTkProgressBar(
@@ -919,13 +908,13 @@ class PantallaAdministracion(ctk.CTkFrame):
             corner_radius=4,
             height=6,
         )
-        self._progreso.grid(row=8, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+        self._progreso.grid(row=7, column=0, columnspan=3, sticky="ew", pady=(8, 0))
         self._progreso.set(0)
         self._lbl_progreso = ctk.CTkLabel(
             contenedor, text="", text_color=th.TEXTO_SECUNDARIO,
             font=(th.FUENTE, th.TAM_NOTA),
         )
-        self._lbl_progreso.grid(row=9, column=0, columnspan=3, sticky="w", pady=(2, 0))
+        self._lbl_progreso.grid(row=8, column=0, columnspan=3, sticky="w", pady=(2, 0))
 
         # Sin espacio reservado: el resumen y el progreso aparecen solo al operar
         self._detalles_usados = False
@@ -995,6 +984,10 @@ class PantallaAdministracion(ctk.CTkFrame):
         anterior_alto = self._alto_compacto
         self._ancho_compacto = ancho_compacto
         self._alto_compacto = alto_compacto
+        if ancho_compacto:
+            self._lbl_resultados.pack_forget()
+        else:
+            self._lbl_resultados.pack(side="right")
         self._fila_carpeta.grid_configure(pady=(8 if alto_compacto else 24, 6))
         self._marco_acciones.grid_configure(pady=(8 if alto_compacto else 16, 0))
         if self.modo == MODO_PAGOS:
@@ -1155,27 +1148,33 @@ class PantallaAdministracion(ctk.CTkFrame):
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     def al_mostrar(self) -> None:
-        self._refrescar_clientes()
+        self._cliente_cargado = self.app.cliente_actual
         self._cargar_tabla()
-        self._combo_cliente.focus_set()
 
-    def _refrescar_clientes(self) -> None:
-        with Catalogo(self.app.db_path) as catalogo:
-            self._combo_cliente.configure(values=catalogo.clientes())
+    def _filtro_kwargs(self) -> dict[str, str]:
+        return {
+            clave: entrada.get().strip()
+            for clave, entrada in self._filtros.items()
+            if entrada.get().strip()
+        }
+
+    def _consulta(self, catalogo: Catalogo, **kwargs):
+        """Consulta siempre el cliente activo y aplica los filtros visibles."""
+        kwargs.update(self._filtro_kwargs())
+        return catalogo.consulta(cliente=self._cliente_cargado, **kwargs)
+
+    def _aplicar_filtros(self) -> None:
+        self._cargar_tabla()
+
+    def _limpiar_filtros(self) -> None:
+        for entrada in self._filtros.values():
+            entrada.delete(0, "end")
+        self._cargar_tabla()
 
     def _elegir_carpeta(self) -> None:
         carpeta = filedialog.askdirectory(parent=self, title="Seleccionar carpeta con los XMLs")
         if carpeta:
             self._carpeta.set(carpeta)
-
-    def _anadir_carpeta(self) -> None:
-        carpeta = filedialog.askdirectory(parent=self, title="Añadir otra carpeta con XMLs")
-        if carpeta:
-            actual = self._carpeta.get().strip()
-            if actual:
-                self._carpeta.set(f"{actual}; {carpeta}")
-            else:
-                self._carpeta.set(carpeta)
 
     # ── Leer ──────────────────────────────────────────────────────────────────
 
@@ -1190,9 +1189,12 @@ class PantallaAdministracion(ctk.CTkFrame):
                 parent=self,
             )
             return
-        cliente = self._cliente.get().strip()
-        etiqueta = cliente or ", ".join(r.name for r in rutas_validas)
-        self._cliente_cargado = cliente or None
+        cliente = self.app.cliente_actual
+        if not cliente:
+            messagebox.showinfo("Cliente", "Selecciona un cliente antes de leer XML.", parent=self)
+            return
+        etiqueta = cliente
+        self._cliente_cargado = cliente
 
         limpiar_antes = True
         pantalla_ajustes = getattr(self.app, "_pantallas", {}).get("ajustes")
@@ -1234,7 +1236,7 @@ class PantallaAdministracion(ctk.CTkFrame):
     # ── Validar ───────────────────────────────────────────────────────────────
 
     def _validar(self) -> None:
-        cliente = self._cliente_cargado or self._cliente.get().strip() or None
+        cliente = self.app.cliente_actual or self._cliente_cargado
         force = self._force.get()
         config = ConfigLote(delay_segundos=2.0)
         self._resumen.mostrar("Consultando estatus SAT…", detalle="Preparando la consulta.")
@@ -1295,7 +1297,7 @@ class PantallaAdministracion(ctk.CTkFrame):
         )
         if not ruta:
             return
-        cliente = self._cliente_cargado or self._cliente.get().strip() or None
+        cliente = self.app.cliente_actual or self._cliente_cargado
         self._resumen.mostrar("Generando Excel…")
         self._mostrar_detalles_operacion()
         self.app.ejecutar(
@@ -1350,7 +1352,7 @@ class PantallaAdministracion(ctk.CTkFrame):
                     "doctos": self._filas_doctos,
                 }[self._vista](catalogo)
             else:
-                filas_db = [dict(f) for f in catalogo.consulta(cliente=self._cliente_cargado)]
+                filas_db = [dict(f) for f in self._consulta(catalogo)]
                 self._totales_panel.actualizar(filas_db)
                 if self.modo == MODO_CFDI40:
                     self._filas_cfdi(catalogo)
@@ -1358,6 +1360,14 @@ class PantallaAdministracion(ctk.CTkFrame):
                     self._filas_nomina(catalogo)
 
         auto_ajustar_columnas(self._tabla)
+        try:
+            total = len(self._tabla.get_children())
+            activos = len(self._filtro_kwargs())
+            self._lbl_resultados.configure(
+                text=f"{total:,} registros" + (f" · {activos} filtros" if activos else "")
+            )
+        except Exception:
+            pass
 
     def _filas_facturas_ppd(self, catalogo: Catalogo) -> None:
         doctos_por_uuid: dict[str, list] = {}
@@ -1365,7 +1375,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             for doc in catalogo.consultar_doctos(pago["id"]):
                 doctos_por_uuid.setdefault(doc["uuid_doc"], []).append(doc)
 
-        for i, f in enumerate(catalogo.consulta(cliente=self._cliente_cargado)):
+        for i, f in enumerate(self._consulta(catalogo)):
             if f["metodo_pago"] != "PPD" or f["tipo_comprobante"] not in ("I", "E"):
                 continue
             base = "impar" if i % 2 == 1 else "par"
@@ -1410,7 +1420,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             n, m = resumen_rep.get(pago["comprobante_uuid"], (0, 0.0))
             resumen_rep[pago["comprobante_uuid"]] = (n + 1, m + (_numero(pago["monto"]) or 0.0))
 
-        for i, f in enumerate(catalogo.consulta(cliente=self._cliente_cargado)):
+        for i, f in enumerate(self._consulta(catalogo)):
             if f["tipo_comprobante"] != "P":
                 continue
             base = "impar" if i % 2 == 1 else "par"
@@ -1441,7 +1451,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             )
 
     def _filas_pagos_lista(self, catalogo: Catalogo) -> None:
-        comprobantes = {f["uuid"]: f for f in catalogo.consulta(cliente=self._cliente_cargado)}
+        comprobantes = {f["uuid"]: f for f in self._consulta(catalogo)}
         for i, pago in enumerate(catalogo.consultar_pagos(cliente=self._cliente_cargado)):
             rep = comprobantes.get(pago["comprobante_uuid"])
             base = "impar" if i % 2 == 1 else "par"
@@ -1467,7 +1477,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             )
 
     def _filas_doctos(self, catalogo: Catalogo) -> None:
-        comprobantes = {f["uuid"]: f for f in catalogo.consulta(cliente=self._cliente_cargado)}
+        comprobantes = {f["uuid"]: f for f in self._consulta(catalogo)}
         todo = {f["uuid"]: f for f in catalogo.consulta()}
         contador_filas = 0
         for pago in catalogo.consultar_pagos(cliente=self._cliente_cargado):
@@ -1511,7 +1521,7 @@ class PantallaAdministracion(ctk.CTkFrame):
                 contador_filas += 1
 
     def _filas_cfdi(self, catalogo: Catalogo) -> None:
-        for i, fila in enumerate(catalogo.consulta(cliente=self._cliente_cargado)):
+        for i, fila in enumerate(self._consulta(catalogo)):
             if fila["tipo_comprobante"] in ("P", "N"):
                 continue
             base = "impar" if i % 2 == 1 else "par"
@@ -1581,7 +1591,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             )
 
     def _filas_pagos(self, catalogo: Catalogo) -> None:
-        comprobantes = {f["uuid"]: f for f in catalogo.consulta(cliente=self._cliente_cargado)}
+        comprobantes = {f["uuid"]: f for f in self._consulta(catalogo)}
         todo = {f["uuid"]: f for f in catalogo.consulta()}
         contador_filas = 0
         for pago in catalogo.consultar_pagos(cliente=self._cliente_cargado):
@@ -1635,7 +1645,7 @@ class PantallaAdministracion(ctk.CTkFrame):
                 contador_filas += 1
 
     def _filas_nomina(self, catalogo: Catalogo) -> None:
-        for i, fila in enumerate(catalogo.consulta(cliente=self._cliente_cargado, tipo="N")):
+        for i, fila in enumerate(self._consulta(catalogo, tipo="N")):
             base = "impar" if i % 2 == 1 else "par"
             path_xml = Path(fila["ruta"])
             nom = None

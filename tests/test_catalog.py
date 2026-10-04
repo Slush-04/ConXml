@@ -135,6 +135,21 @@ def test_filtros_por_cliente_y_periodo(catalogo, tmp_path):
     assert len(list(catalogo.consulta(cliente="inexistente"))) == 0
 
 
+def test_clientes_editables_y_filtros_de_identificacion(catalogo, tmp_path):
+    carpeta = tmp_path / "cliente1"
+    _copiar("ingreso_iva.xml", carpeta)
+    importar_carpeta(catalogo, carpeta, "CLI-1")
+
+    detalle = catalogo.clientes_detalle()
+    assert [fila["clave"] for fila in detalle] == ["CLI-1"]
+    catalogo.actualizar_cliente("CLI-1", "Cliente de prueba", "AAA010101AAA")
+    assert catalogo.obtener_cliente("CLI-1")["nombre"] == "Cliente de prueba"
+
+    assert len(list(catalogo.consulta(uuid="123E4567"))) == 1
+    assert len(list(catalogo.consulta(rfc="EKU900317"))) == 1
+    assert len(list(catalogo.consulta(serie="A", folio="124"))) == 1
+
+
 def test_comprobante_sin_timbre_se_registra_como_error(catalogo, tmp_path):
     carpeta = tmp_path / "cliente1"
     carpeta.mkdir(parents=True, exist_ok=True)

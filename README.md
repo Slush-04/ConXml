@@ -53,6 +53,24 @@ Cuenta con una **interfaz gráfica moderna** y personalizable (GUI) y con una **
   Comprobado en macOS con ventanas de 900x650 hasta 1920x1080; la validación
   en un equipo Windows real sigue pendiente.
 
+### Flujo de clientes y Bóveda
+- Al iniciar se abre una ventana independiente para seleccionar el cliente activo;
+  desde esa ventana se pueden crear y editar la clave, nombre y RFC de cada cliente.
+  Ya dentro del programa, **Cambiar cliente** vuelve a abrir esa ventana sin cerrar la aplicación.
+- **Bóveda** copia carpetas masivas y organiza los XML en
+  `boveda/<cliente>/Recibidos|Emitidos/<año>/<mes>/`. También crea las carpetas
+  `Emitidos/Masivo` y `Recibidos/Masivo` para pegar XML descargados del SAT y
+  revisarlos desde la pantalla Bóveda. La pantalla también permite examinar
+  cualquier carpeta externa y cargar directamente los XML seleccionados a
+  Administración de XML.
+- La selección de dirección, año y mes se carga al catálogo con un botón; así
+  el visor trabaja solo con el periodo elegido.
+- Administración XML conserva sus vistas de CFDI, pagos y nómina y añade filtros
+  por UUID, RFC, serie y folio.
+- La descripción técnica de esta organización está en
+  [`docs/arquitectura.md`](docs/arquitectura.md) y
+  [`configuraciones/boveda.md`](configuraciones/boveda.md).
+
 ---
 
 ## 📁 Estructura del Proyecto

@@ -55,6 +55,15 @@ CREATE TABLE IF NOT EXISTS comprobantes (
     estatus_cancelacion TEXT
 );
 
+CREATE TABLE IF NOT EXISTS clientes (
+    clave TEXT PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    rfc TEXT NOT NULL DEFAULT '',
+    activo INTEGER NOT NULL DEFAULT 1,
+    creado_en TEXT NOT NULL,
+    actualizado_en TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS pagos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     comprobante_uuid TEXT NOT NULL,
@@ -87,6 +96,25 @@ CREATE TABLE IF NOT EXISTS errores (
     ruta TEXT NOT NULL,
     mensaje TEXT NOT NULL,
     fecha TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS solicitudes_descarga (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cliente TEXT NOT NULL,
+    rfc TEXT NOT NULL,
+    direccion TEXT NOT NULL,
+    fecha_inicial TEXT NOT NULL,
+    fecha_final TEXT NOT NULL,
+    tipo_comprobante TEXT NOT NULL DEFAULT '',
+    id_sat TEXT NOT NULL UNIQUE,
+    cod_estatus TEXT NOT NULL DEFAULT '',
+    estado INTEGER,
+    mensaje TEXT NOT NULL DEFAULT '',
+    numero_cfdis INTEGER NOT NULL DEFAULT 0,
+    paquetes_json TEXT NOT NULL DEFAULT '[]',
+    recuperado INTEGER NOT NULL DEFAULT 0,
+    creada_en TEXT NOT NULL,
+    actualizada_en TEXT NOT NULL
 );
 """
 
@@ -125,7 +153,7 @@ def _dec(valor: Decimal | None) -> str | None:
     return str(valor) if valor is not None else None
 
 
-_TABLAS = frozenset({"comprobantes", "pagos", "doctos_relacionados", "errores"})
+_TABLAS = frozenset({"comprobantes", "clientes", "pagos", "doctos_relacionados", "errores", "solicitudes_descarga"})
 
 
 def _json(objetos: list[Any]) -> str | None:
@@ -167,6 +195,108 @@ class Catalogo:
             self.conn.execute(f"ALTER TABLE comprobantes ADD COLUMN {nombre} {tipo}")
         if faltantes:
             self.conn.commit()
+        # Versiones anteriores guardaban el cliente como texto libre. Crear
+        # sus registros permite editarlos desde la nueva pantalla inicial.
+        ahora = datetime.now().isoformat(timespec="seconds")
+        self.conn.execute(
+            "INSERT OR IGNORE INTO clientes (clave, nombre, rfc, creado_en, actualizado_en) "
+            "SELECT DISTINCT cliente, cliente, '', ?, ? FROM comprobantes "
+            "WHERE TRIM(cliente) <> ''",
+            (ahora, ahora),
+        )
+        self.conn.commit()
+
+    def crear_cliente(self, clave: str, nombre: str, rfc: str = "") -> str:
+        """Crea un cliente y devuelve su clave estable."""
+        clave = clave.strip()
+        nombre = nombre.strip()
+        rfc = rfc.strip().upper()
+        if not clave or not nombre:
+            raise ValueError("La clave y el nombre del cliente son obligatorios")
+        ahora = datetime.now().isoformat(timespec="seconds")
+        try:
+            self.conn.execute(
+                "INSERT INTO clientes (clave, nombre, rfc, creado_en, actualizado_en) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (clave, nombre, rfc, ahora, ahora),
+            )
+            self.conn.commit()
+        except sqlite3.IntegrityError as exc:
+            self.conn.rollback()
+            raise ValueError(f"Ya existe el cliente '{clave}'") from exc
+        return clave
+
+    def actualizar_cliente(self, clave: str, nombre: str, rfc: str = "") -> None:
+        nombre = nombre.strip()
+        rfc = rfc.strip().upper()
+        if not nombre:
+            raise ValueError("El nombre del cliente es obligatorio")
+        ahora = datetime.now().isoformat(timespec="seconds")
+        cur = self.conn.execute(
+            "UPDATE clientes SET nombre = ?, rfc = ?, actualizado_en = ? WHERE clave = ?",
+            (nombre, rfc, ahora, clave),
+        )
+        if cur.rowcount == 0:
+            raise ValueError(f"No existe el cliente '{clave}'")
+        self.conn.commit()
+
+    def clientes_detalle(self) -> list[sqlite3.Row]:
+        self.conn.row_factory = sqlite3.Row
+        return self.conn.execute(
+            "SELECT clave, nombre, rfc, activo FROM clientes WHERE activo = 1 ORDER BY nombre, clave"
+        ).fetchall()
+
+    def obtener_cliente(self, clave: str) -> sqlite3.Row | None:
+        self.conn.row_factory = sqlite3.Row
+        return self.conn.execute(
+            "SELECT clave, nombre, rfc, activo FROM clientes WHERE clave = ?", (clave,)
+        ).fetchone()
+
+    def asegurar_cliente(self, clave: str, nombre: str | None = None, rfc: str = "") -> str:
+        """Registra una clave heredada si aún no existe."""
+        if self.obtener_cliente(clave) is None:
+            self.crear_cliente(clave, (nombre or clave), rfc)
+        return clave
+
+    def guardar_solicitud_descarga(
+        self, *, cliente: str, rfc: str, direccion: str, fecha_inicial: str,
+        fecha_final: str, tipo_comprobante: str, id_sat: str, cod_estatus: str,
+        estado: int | None, mensaje: str, numero_cfdis: int = 0,
+        paquetes: list[str] | None = None,
+        recuperado: bool | None = None,
+    ) -> None:
+        """Inserta una solicitud SAT o actualiza su último estado conocido."""
+        ahora = datetime.now().isoformat(timespec="seconds")
+        self.conn.execute(
+            """INSERT INTO solicitudes_descarga
+            (cliente, rfc, direccion, fecha_inicial, fecha_final, tipo_comprobante,
+             id_sat, cod_estatus, estado, mensaje, numero_cfdis, paquetes_json, recuperado, creada_en, actualizada_en)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id_sat) DO UPDATE SET
+              cod_estatus=excluded.cod_estatus, estado=excluded.estado,
+              mensaje=excluded.mensaje, numero_cfdis=excluded.numero_cfdis,
+              paquetes_json=excluded.paquetes_json,
+              recuperado=CASE WHEN ? IS NULL THEN solicitudes_descarga.recuperado ELSE excluded.recuperado END,
+              actualizada_en=excluded.actualizada_en""",
+            (cliente, rfc, direccion, fecha_inicial, fecha_final, tipo_comprobante,
+             id_sat, cod_estatus, estado, mensaje, numero_cfdis,
+             json.dumps(paquetes or [], ensure_ascii=False), int(bool(recuperado)), ahora, ahora,
+             None if recuperado is None else int(bool(recuperado))),
+        )
+        self.conn.commit()
+
+    def solicitudes_descarga_cliente(self, cliente: str) -> list[sqlite3.Row]:
+        self.conn.row_factory = sqlite3.Row
+        return self.conn.execute(
+            "SELECT * FROM solicitudes_descarga WHERE cliente = ? ORDER BY creada_en DESC, id DESC",
+            (cliente,),
+        ).fetchall()
+
+    def obtener_solicitud_descarga(self, id_sat: str) -> sqlite3.Row | None:
+        self.conn.row_factory = sqlite3.Row
+        return self.conn.execute(
+            "SELECT * FROM solicitudes_descarga WHERE id_sat = ?", (id_sat,),
+        ).fetchone()
 
     def __enter__(self) -> "Catalogo":
         return self
@@ -184,6 +314,8 @@ class Catalogo:
 
         Devuelve 'inserted' o 'skipped' si el UUID ya existía.
         """
+        cliente = cliente.strip()
+        self.asegurar_cliente(cliente)
         columnas = _COLUMNAS.split(", ")
         try:
             cur = self.conn.execute(
@@ -369,6 +501,10 @@ class Catalogo:
         hasta: str | None = None,
         tipo: str | None = None,
         sin_estatus: bool = False,
+        uuid: str | None = None,
+        rfc: str | None = None,
+        serie: str | None = None,
+        folio: str | None = None,
     ) -> tuple[str, list[Any]]:
         where = " WHERE 1=1"
         params: list[Any] = []
@@ -386,6 +522,14 @@ class Catalogo:
             params.append(hasta + "T23:59:59")
         if sin_estatus:
             where += " AND estatus IS NULL"
+        for columna, valor in (("uuid", uuid), ("serie", serie), ("folio", folio)):
+            if valor and valor.strip():
+                where += f" AND UPPER(COALESCE({columna}, '')) LIKE UPPER(?)"
+                params.append(f"%{valor.strip()}%")
+        if rfc and rfc.strip():
+            where += " AND (UPPER(COALESCE(emisor_rfc, '')) LIKE UPPER(?) OR " \
+                     "UPPER(COALESCE(receptor_rfc, '')) LIKE UPPER(?))"
+            params.extend((f"%{rfc.strip()}%", f"%{rfc.strip()}%"))
         return where, params
 
     def consulta(
@@ -395,8 +539,14 @@ class Catalogo:
         hasta: str | None = None,
         tipo: str | None = None,
         sin_estatus: bool = False,
+        uuid: str | None = None,
+        rfc: str | None = None,
+        serie: str | None = None,
+        folio: str | None = None,
     ) -> Iterator[sqlite3.Row]:
-        where, params = self._filtros_consulta(cliente, desde, hasta, tipo, sin_estatus)
+        where, params = self._filtros_consulta(
+            cliente, desde, hasta, tipo, sin_estatus, uuid, rfc, serie, folio
+        )
         self.conn.row_factory = sqlite3.Row
         return self.conn.execute(
             "SELECT * FROM comprobantes" + where + " ORDER BY fecha", params
@@ -409,8 +559,14 @@ class Catalogo:
         hasta: str | None = None,
         tipo: str | None = None,
         sin_estatus: bool = False,
+        uuid: str | None = None,
+        rfc: str | None = None,
+        serie: str | None = None,
+        folio: str | None = None,
     ) -> int:
-        where, params = self._filtros_consulta(cliente, desde, hasta, tipo, sin_estatus)
+        where, params = self._filtros_consulta(
+            cliente, desde, hasta, tipo, sin_estatus, uuid, rfc, serie, folio
+        )
         return self.conn.execute(
             "SELECT COUNT(*) FROM comprobantes" + where, params
         ).fetchone()[0]
@@ -438,11 +594,11 @@ class Catalogo:
         return self.conn.execute(f"SELECT COUNT(*) FROM {tabla}").fetchone()[0]
 
     def clientes(self) -> list[str]:
-        """Clientes que tienen al menos un comprobante en el catálogo, ordenados."""
+        """Claves de clientes activos, incluidos los heredados del catálogo."""
         return [
             fila[0]
             for fila in self.conn.execute(
-                "SELECT DISTINCT cliente FROM comprobantes ORDER BY cliente"
+                "SELECT clave FROM clientes WHERE activo = 1 ORDER BY nombre, clave"
             )
         ]
 
