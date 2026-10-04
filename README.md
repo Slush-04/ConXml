@@ -244,3 +244,13 @@ pytest
 ## 📄 Licencia
 
 Este proyecto es de uso privado para gestión contable. Consulta la información interna del repositorio para términos y condiciones.
+
+### Instalador Windows y actualizaciones
+
+El proceso de distribución genera un único `ConXml-Setup-X.Y.Z-windows-x64.exe`.
+Los cambios de código en `main` construyen, prueban y publican una Release mediante
+GitHub Actions. La app muestra **⬇** cuando existe un instalador nuevo verificable;
+la descarga y la instalación requieren acción del usuario. Los datos persisten en
+`%LOCALAPPDATA%\ConXml\data`.
+
+Consulta [construcción, publicación y pruebas locales en Mac](docs/instalador-actualizaciones.md).

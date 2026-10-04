@@ -24,4 +24,4 @@ $size = [math]::Round((Get-Item $exe).Length / 1MB, 1)
 Write-Host ""
 Write-Host "OK: $exe  ($size MB)"
 Write-Host "    $root\dist\conxml-cli.exe  (CLI, consola)"
-Write-Host "Nota: el exe crea la carpeta 'data' junto a sí mismo (BD SQLite y salidas)."
+Write-Host "Datos persistentes: %LOCALAPPDATA%\ConXml\data (no se reemplazan al actualizar)."

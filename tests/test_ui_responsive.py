@@ -249,11 +249,19 @@ def test_boveda_busca_carpeta_externa_y_filtra_origen(tmp_path, monkeypatch):
         raiz.update_idletasks()
         assert len(pantalla._archivos_actuales) == 1
         assert pantalla._tabla.item(pantalla._tabla.get_children()[0], "values")[0] == "Carpeta"
-        assert pantalla._combo_anio.cget("state") == "disabled"
+        # La UI actual conserva editables los filtros de Bóveda; una carpeta
+        # externa se lee completa y no debe filtrarse con esos valores.
+        assert pantalla._combo_anio.cget("state") == "normal"
+        pantalla._anio.set("1900")
+        pantalla._mes.set("12")
+        pantalla._actualizar_lista()
+        assert len(pantalla._archivos_actuales) == 1
 
         pantalla._direccion.set("Emitidos")
         pantalla._cambiar_origen()
         assert pantalla._combo_anio.cget("state") == "normal"
+        assert pantalla._anio.get() == "1900"
+        assert pantalla._mes.get() == "12"
     finally:
         _destruir(raiz)
 

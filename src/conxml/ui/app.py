@@ -30,6 +30,7 @@ from conxml.ui.pantalla_clientes import PantallaClientes
 from conxml.ui.pantalla_descargas import PantallaDescargas
 from conxml.ui.pantalla_resumen import PantallaResumen
 from conxml.ui.widgets import PanelCard
+from conxml.ui.actualizaciones import Actualizaciones
 
 SECCIONES = [
     ("admin_xml", "ADMINISTRACIÓN XML", [
@@ -363,6 +364,7 @@ class ConXmlApp(ctk.CTkFrame):
         except Exception:
             pass
         self.after(250, self._aplicar_responsive_inicial)
+        self.actualizaciones = Actualizaciones(self)
 
     def _crear_boton_nav(self, parent, texto: str, comando) -> ctk.CTkButton:
         boton = ctk.CTkButton(
@@ -770,8 +772,19 @@ class ConXmlApp(ctk.CTkFrame):
 
 def main() -> None:
     if sys.platform == "win32":
+        # Mismo mutex que el instalador: evita escribir datos con dos instancias
+        # y que Setup sustituya ejecutables mientras ConXml sigue abierto.
+        import ctypes
+        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
+        kernel.CreateMutexW.restype = ctypes.c_void_p
+        mutex = kernel.CreateMutexW(None, False, 'ConXmlApplication')
+        if not mutex:
+            raise ctypes.WinError(ctypes.get_last_error())
+        if ctypes.get_last_error() == 183:
+            messagebox.showinfo('ConXml', 'ConXml ya está abierto. Cierra la otra ventana antes de continuar.')
+            return
         try:
-            import ctypes
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except Exception:
             pass
@@ -783,6 +796,12 @@ def main() -> None:
     # La selección de cliente es la primera ventana. La ventana principal se
     # construye después de seleccionar para que siempre arranque con contexto.
     raiz.withdraw()
+    try:
+        Config().inicializar()
+    except OSError as exc:
+        messagebox.showerror('Datos de ConXml', f'No se pudieron preparar las carpetas de datos:\n{exc}', parent=raiz)
+        raiz.destroy()
+        return
 
     def abrir_programa(clave: str) -> None:
         raiz.deiconify()
