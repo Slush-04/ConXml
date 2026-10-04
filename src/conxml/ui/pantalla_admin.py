@@ -30,7 +30,7 @@ from conxml.config import Config
 from conxml import estado_local
 from conxml.archivos import abrir_local
 from conxml.export.pdf import generar_pdf, exportar_lote, nombre_pdf
-from conxml.ui.visor_pdf import VisorPDF
+from conxml.ui.visor_pdf import abrir_vista_previa
 from conxml.export.listado import (
     COMPLEMENTOS_IGNORADOS,
     _base_por_factor,
@@ -1406,7 +1406,7 @@ class PantallaAdministracion(ctk.CTkFrame):
         doc = documentos[0]
         import uuid
         destino = Config().base / 'cache' / 'pdf' / f'{uuid.uuid4().hex}_{nombre_pdf(doc["uuid"])}'
-        self.app.ejecutar(lambda: generar_pdf(Path(doc['ruta']), destino), lambda ruta: VisorPDF(self, ruta), 'Generando vista previa PDF')
+        self.app.ejecutar(lambda: generar_pdf(Path(doc['ruta']), destino), lambda ruta: abrir_vista_previa(self, ruta), 'Generando vista previa PDF')
 
     def _guardar_pdf(self):
         documentos = self._documentos_pdf(individual=True)

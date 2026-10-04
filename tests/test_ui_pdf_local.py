@@ -77,9 +77,6 @@ def test_vista_previa_local_pagina_y_guarda(app, tmp_path, monkeypatch):
     assert float(visor.canvas.cget('scrollregion').split()[2]) > visor.canvas.winfo_width()
     visor._ajustar_ancho()
     assert visor._zoom == 1.0
-    if visor.tk.call('tk', 'windowingsystem') == 'aqua':
-        assert visor._nativo
-        assert visor.imagen.cget('bitmap')
     visor._mover(1)
     assert visor.pagina == 1
     destino = tmp_path / 'guardado.pdf'
@@ -108,7 +105,6 @@ def test_visor_renderizado_alternativo_y_limpieza(app, tmp_path):
     ruta = generar_pdf(FIXTURES / 'ingreso_iva.xml', tmp_path / 'alternativo.pdf')
     visor = VisorPDF(app, ruta)
     temporal = Path(visor._temporales.name)
-    visor._nativo = False
     visor._mostrar()
     ancho = visor._foto.width()
     visor._cambiar_zoom(.5)

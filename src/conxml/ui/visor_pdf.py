@@ -3,7 +3,8 @@ from pathlib import Path
 import math
 import shutil
 import tempfile
-import uuid
+import sys
+import subprocess
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -26,8 +27,6 @@ class VisorPDF(ctk.CTkToplevel):
         self._zoom = 1.0
         self._cerrado = False
         self._temporales = tempfile.TemporaryDirectory(prefix='conxml-visor-')
-        self._bitmap_nombre = f'conxml_pdf_{uuid.uuid4().hex}'
-        self._nativo = self.tk.call('tk', 'windowingsystem') == 'aqua' and bool(self.tk.call('info', 'commands', '::tk::mac::iconBitmap'))
         self.protocol('WM_DELETE_WINDOW', self._cerrar)
         barra = ctk.CTkFrame(self)
         barra.pack(fill='x', padx=12, pady=(12, 6))
@@ -67,18 +66,6 @@ class VisorPDF(ctk.CTkToplevel):
         self._mostrar()
         self.after(100, self.lift)
 
-    def _pagina_nativa(self):
-        """Una página vectorial para NSImage, sin convertir texto a un bitmap."""
-        destino = Path(self._temporales.name) / f'pagina-{self.pagina}.pdf'
-        if not destino.exists():
-            documento = pdfium.PdfDocument.new()
-            try:
-                documento.import_pages(self.doc, pages=[self.pagina])
-                documento.save(destino)
-            finally:
-                documento.close()
-        return destino
-
     def _mostrar(self):
         if self._cerrado:
             return
@@ -87,25 +74,14 @@ class VisorPDF(ctk.CTkToplevel):
             ancho_pagina, alto_pagina = page.get_size()
             ancho = max(1, round(self._ancho_preview * self._zoom * ctk.ScalingTracker.get_widget_scaling(self)))
             alto = max(1, round(ancho * alto_pagina / ancho_pagina))
-            if self._nativo:
-                try:
-                    # Un bitmap nativo conserva NSImage/PDF y se dibuja a la resolución
-                    # real de Retina. PhotoImage reduce primero a píxeles lógicos.
-                    self.imagen.configure(bitmap='', image='')
-                    nombre = f'{self._bitmap_nombre}_{self.pagina}_{ancho}_{alto}'
-                    self.tk.call('::tk::mac::iconBitmap', nombre, ancho, alto, '-imageFile', str(self._pagina_nativa()))
-                    self.imagen.configure(bitmap=nombre)
-                except tk.TclError:
-                    self._nativo = False
-            if not self._nativo:
-                # Sobremuestreo: nunca ampliar una imagen renderizada a escala fija.
-                bitmap = page.render(scale=max(1.0, ancho * 2 / ancho_pagina))
-                try:
-                    pil = bitmap.to_pil().resize((ancho, alto), Image.Resampling.LANCZOS)
-                    self._foto = ImageTk.PhotoImage(pil, master=self)
-                    self.imagen.configure(bitmap='', image=self._foto)
-                finally:
-                    bitmap.close()
+            # Renderizar de nuevo al tamaño solicitado; nunca ampliar la miniatura.
+            bitmap = page.render(scale=max(1.0, ancho * 2 / ancho_pagina))
+            try:
+                pil = bitmap.to_pil().resize((ancho, alto), Image.Resampling.LANCZOS)
+                self._foto = ImageTk.PhotoImage(pil, master=self)
+                self.imagen.configure(image=self._foto)
+            finally:
+                bitmap.close()
         finally:
             page.close()
         self.indice.configure(text=f'Página {self.pagina + 1} de {len(self.doc)}')
@@ -169,3 +145,27 @@ class VisorPDF(ctk.CTkToplevel):
         self._temporales.cleanup()
         self.ruta.unlink(missing_ok=True)
         self.destroy()
+
+
+def abrir_vista_previa(parent, ruta: Path):
+    """PDFKit en macOS; visor Python en los demás sistemas."""
+    if sys.platform == 'darwin':
+        base = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[3]))
+        ejecutable = base / 'assets' / 'conxml-pdf-viewer' if getattr(sys, 'frozen', False) else base / 'build' / 'native' / 'conxml-pdf-viewer'
+        if ejecutable.is_file():
+            try:
+                proceso = subprocess.Popen([str(ejecutable), str(ruta)])
+            except OSError:
+                return VisorPDF(parent, ruta)
+
+            def comprobar():
+                estado = proceso.poll()
+                if estado is None:
+                    parent.after(250, comprobar)
+                elif estado == 0:
+                    ruta.unlink(missing_ok=True)
+                else:
+                    VisorPDF(parent, ruta)
+            parent.after(250, comprobar)
+            return proceso
+    return VisorPDF(parent, ruta)

@@ -6,6 +6,7 @@
 
 import os
 import sys
+import subprocess
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 excludes = ["pytest", "_pytest", "tests"]
@@ -29,10 +30,19 @@ datas_gui += collect_data_files("customtkinter")
 # En macOS no se recomienda UPX porque puede invalidar binarios Mach-O
 usar_upx = False if sys.platform == "darwin" else True
 
+binaries_gui = []
+if sys.platform == "darwin":
+    # PDFKit dibuja directamente el documento vectorial a resolución Retina.
+    os.makedirs("build/native", exist_ok=True)
+    visor_nativo = "build/native/conxml-pdf-viewer"
+    subprocess.run(["xcrun", "swiftc", "-O", "-module-cache-path", "build/native/swift-cache",
+                    "src/conxml/ui/native/VisorPDF.swift", "-o", visor_nativo], check=True)
+    binaries_gui.append((visor_nativo, "assets"))
+
 a_gui = Analysis(
     ["src/conxml/ui_main.py"],
     pathex=["src"],
-    binaries=[],
+    binaries=binaries_gui,
     datas=datas_gui,
     # ReportLab carga por nombre los tipos de código de barras al importar QR.
     hiddenimports=["customtkinter", "darkdetect"] + collect_submodules("reportlab.graphics.barcode"),
@@ -144,8 +154,8 @@ if sys.platform == "darwin":
             "CFBundleName": "ConXml",
             "CFBundleDisplayName": "ConXml",
             "CFBundleIdentifier": "com.conxml.app",
-            "CFBundleVersion": "0.1.0",
-            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleVersion": "0.2.0",
+            "CFBundleShortVersionString": "0.2.0",
             "NSHighResolutionCapable": "True",
             "NSRequiresAquaSystemAppearance": "False",
             "LSMinimumSystemVersion": "10.15",
