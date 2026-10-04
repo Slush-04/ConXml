@@ -147,6 +147,11 @@ respaldo/cierre se comprobaron con simulaciones; requieren la validación real d
 Windows indicada arriba. Se verificaron sintaxis YAML, compilación de módulos
 Python, sincronización de versiones y límite numérico del recurso Windows.
 
+En el runner alojado de Windows se omiten únicamente cinco comprobaciones de
+geometría que requieren un escritorio físico mayor que el escritorio virtual del
+runner. Las reglas geométricas puras y las demás pruebas siguen ejecutándose en CI;
+esas cinco comprobaciones deben correrse en una laptop Windows con pantalla real.
+
 ## Archivos de implementación
 
 - `src/conxml/updates.py`: consulta, compatibilidad, descarga, hashes y lanzamiento.
