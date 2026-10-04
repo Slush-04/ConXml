@@ -9,10 +9,38 @@ llave se solicita al operar y se elimina del campo al iniciar la tarea.
 
 ConXml autentica con el SAT, envía la solicitud y conserva en SQLite su
 identificador y estado. El SAT procesa la solicitud de forma asíncrona. Desde el
-historial se consulta su avance; cuando termina, ConXml baja los paquetes ZIP,
-extrae los XML, los acomoda en la Bóveda del cliente y los incorpora al catálogo
-del visor. El sistema registra que el paquete ya se recuperó para no descargarlo
+historial se consulta su avance; cuando termina, ConXml baja los paquetes ZIP
+y aplica el modo y destino elegidos en Configuración. El sistema registra que
+la solicitud ya se recuperó para no descargarla
 una segunda vez por accidente.
+
+## Elegir dónde y cómo guardar
+
+En **Configuración y Ajustes → Destino de descargas SAT**:
+
+1. Elegir **Organizar XML e importar al visor** o **Conservar ZIP sin extraer**.
+2. Elegir una carpeta con **Elegir carpeta…** o escribir su ruta completa.
+3. Pulsar **Guardar destino y modo**. La elección se conserva al reiniciar.
+
+En modo organizado, la carpeta elegida se convierte en la raíz de Bóveda.
+Los XML se guardan como `cliente/Emitidos|Recibidos/año/mes/archivo.xml`, usando
+el RFC y la fecha del CFDI, y se importan al visor. El destino predeterminado
+es la bóveda local existente.
+
+En modo ZIP, los bytes recibidos se guardan intactos en
+`carpeta/cliente/solicitud/paquete.zip`, sin extraer, clasificar ni importar XML.
+Puedes mover y extraer los paquetes manualmente; después puedes copiar los XML
+desde Bóveda. Este modo conserva la raíz de Bóveda configurada previamente.
+Su carpeta predeterminada es `descargas_sat` dentro de los datos locales.
+
+Cada modo conserva su propia carpeta. Cambiar el destino se aplica a próximas
+recuperaciones: no migra ni borra los archivos anteriores. Al cambiar la raíz
+de Bóveda, su vista muestra la nueva carpeta; para ver los archivos anteriores,
+vuelve a elegir la raíz anterior o cópialos manualmente. El catálogo y el
+historial de solicitudes SAT permanecen en la misma base de datos.
+
+Las opciones afectan únicamente a los paquetes recuperados por ConXml. Si
+descargas directamente en un navegador, el destino lo controla el navegador.
 
 Los certificados, las llaves privadas, las contraseñas y los tokens no se guardan
 en el catálogo. El historial sí persiste para que el usuario pueda continuar el

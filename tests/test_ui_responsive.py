@@ -105,6 +105,7 @@ def test_sidebar_compacto_y_recuperacion(tmp_path, monkeypatch):
         raiz.update_idletasks()
         assert app.sidebar_compacto is True
         assert app.ancho_sidebar == resp.ANCHO_SIDEBAR_COMPACTO
+        assert app._btn_sidebar.winfo_x() + app._btn_sidebar.winfo_width() <= app._cabecera_lateral.winfo_width()
         assert app._botones["admin40"].cget("text") == "XML 4.0"
         assert app._botones["pagos"].cget("text") == "Pagos"
         # Etiquetas breves legibles, no solo emojis.
@@ -128,6 +129,7 @@ def test_sidebar_se_puede_ocultar_y_recuperar(tmp_path, monkeypatch):
         raiz.geometry("1200x800")
         raiz.update_idletasks()
         assert app._btn_sidebar.winfo_viewable() == 1
+        assert app._btn_sidebar.master is app._cabecera_lateral
         ancho_con_sidebar = app._contenido.winfo_width()
         assert app.sidebar_visible is True
         assert app._panel_lateral.winfo_manager() == "grid"
@@ -136,6 +138,8 @@ def test_sidebar_se_puede_ocultar_y_recuperar(tmp_path, monkeypatch):
         raiz.update_idletasks()
         assert app.sidebar_visible is False
         assert app._panel_lateral.winfo_manager() == ""
+        assert app._btn_sidebar.winfo_viewable() == 1
+        assert app._cabecera_lateral.winfo_viewable() == 1
         assert app._contenido.winfo_width() > ancho_con_sidebar
 
         app.alternar_sidebar()

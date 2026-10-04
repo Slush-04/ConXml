@@ -4,23 +4,20 @@ from __future__ import annotations
 import json
 import tkinter as tk
 from datetime import date, datetime
-from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 import customtkinter as ctk
 
-from conxml.boveda import copiar_xmls, direccion_comprobante, ruta_cliente
 from conxml.catalog.db import Catalogo
 from conxml.catalog.importer import importar_carpetas
 from conxml.config import Config
-from conxml.cfdi import parse_comprobante
+from conxml.sat.almacenamiento import guardar_paquete
 from conxml.sat.descarga_masiva import (
     ClienteDescargaSAT,
     CredencialEFirma,
     ErrorDescargaSAT,
     FiltroDescarga,
     RespuestaSAT,
-    guardar_paquete_zip,
 )
 from conxml.ui import responsive as resp
 from conxml.ui import theme as th
@@ -48,6 +45,8 @@ class PantallaDescargas(ctk.CTkFrame):
             font=(th.FUENTE, th.TAM_BODY, "bold"), anchor="w",
         )
         self._cliente_lbl.pack(fill="x", padx=8, pady=(12, 4))
+        self._destino_lbl = ctk.CTkLabel(self._contenedor, text="", anchor="w", justify="left", wraplength=650, text_color=th.TEXTO_SECUNDARIO)
+        self._destino_lbl.pack(fill="x", padx=8, pady=(0, 8))
 
         cred = PanelCard(self._contenedor)
         cred.pack(fill="x", pady=(8, 10))
@@ -129,6 +128,10 @@ class PantallaDescargas(ctk.CTkFrame):
             rfc = detalle["rfc"] if detalle else ""
             solicitudes = catalogo.solicitudes_descarga_cliente(cliente)
         self._cliente_lbl.configure(text=f"Cliente activo: {detalle['nombre'] if detalle else cliente} · RFC: {rfc or 'falta registrar'}")
+        config = Config()
+        modo = "ZIP sin extraer" if config.modo_descarga_sat == "zip" else "XML organizados e importados"
+        destino = config.carpeta_zip_sat if config.modo_descarga_sat == "zip" else config.carpeta_boveda
+        self._destino_lbl.configure(text=f"Guardado: {modo}\nDestino: {destino}\nPuedes cambiarlo en Configuración.")
         self._renderizar_historial(solicitudes)
 
     def _elegir_cer(self) -> None:
@@ -241,6 +244,10 @@ class PantallaDescargas(ctk.CTkFrame):
             messagebox.showerror("Descarga SAT", str(exc), parent=self)
             return
         self._estado_lbl.configure(text="Consultando estado y paquetes en el SAT…")
+        config = Config()
+        modo = config.modo_descarga_sat
+        datos["modo_guardado"] = modo
+        datos["destino_guardado"] = str(config.carpeta_zip_sat if modo == "zip" else config.carpeta_boveda)
 
         def trabajo():
             fiel = CredencialEFirma.cargar(cer, key, password)
@@ -253,35 +260,20 @@ class PantallaDescargas(ctk.CTkFrame):
                 errores = 0
                 recuperada = bool(datos.get("recuperado"))
                 if respuesta.estado == 3 and not recuperada:
-                    import tempfile
-                    with tempfile.TemporaryDirectory(prefix="conxml-sat-") as temporal:
-                        temp = Path(temporal)
-                        archivos_boveda: list[Path] = []
-                        for indice, paquete_id in enumerate(respuesta.paquetes, start=1):
-                            zip_bytes = sat.descargar_paquete(datos["rfc"], paquete_id)
-                            carpeta = temp / str(indice)
-                            archivos = guardar_paquete_zip(zip_bytes, carpeta)
-                            if archivos:
-                                parcial = copiar_xmls(carpeta, Config(), cliente, datos["rfc"])
-                                copiados += parcial.copiados
-                                errores += parcial.errores
-                                raiz_boveda = ruta_cliente(Config(), cliente)
-                                for archivo in archivos:
-                                    try:
-                                        comprobante = parse_comprobante(archivo)
-                                        direccion = direccion_comprobante(comprobante.emisor_rfc, datos["rfc"])
-                                        destino = (
-                                            raiz_boveda / direccion / f"{comprobante.fecha.year:04d}"
-                                            / f"{comprobante.fecha.month:02d}" / archivo.name
-                                        )
-                                        if destino.is_file():
-                                            archivos_boveda.append(destino)
-                                    except Exception:
-                                        continue
-                        raiz_boveda = ruta_cliente(Config(), cliente)
+                    archivos_boveda = []
+                    for paquete_id in respuesta.paquetes:
+                        zip_bytes = sat.descargar_paquete(datos["rfc"], paquete_id)
+                        guardado = guardar_paquete(zip_bytes, config, cliente, datos["rfc"], datos["id_sat"], paquete_id, modo=modo)
+                        copiados += 1 if guardado.zip_guardado else guardado.copiados
+                        errores += guardado.errores
+                        archivos_boveda.extend(guardado.archivos)
+                    insertados = 0
+                    if modo == "organizado":
                         with Catalogo(self.app.db_path) as catalogo:
                             importados = importar_carpetas(catalogo, archivos_boveda, cliente)
-                    return respuesta, copiados, errores, importados.insertados, True
+                            insertados = importados.insertados
+                            errores += importados.errores
+                    return respuesta, copiados, errores, insertados, errores == 0
                 return respuesta, copiados, errores, 0, recuperada
             finally:
                 sat.cerrar()
@@ -291,19 +283,27 @@ class PantallaDescargas(ctk.CTkFrame):
 
     def _presentar_verificacion(self, datos: dict, resultado) -> None:
         respuesta, copiados, errores, insertados, recuperada = resultado
+        mensaje = respuesta.mensaje
+        if datos.get("recuperado"):
+            mensaje = datos.get("mensaje") or mensaje
+        elif recuperada:
+            modo = "ZIP sin extraer" if datos.get("modo_guardado") == "zip" else "XML organizados"
+            mensaje = f"{mensaje} · {modo}: {datos.get('destino_guardado', '')}"
         with Catalogo(self.app.db_path) as catalogo:
             catalogo.guardar_solicitud_descarga(
                 cliente=datos["cliente"], rfc=datos["rfc"], direccion=datos["direccion"],
                 fecha_inicial=datos["fecha_inicial"], fecha_final=datos["fecha_final"],
                 tipo_comprobante=datos["tipo_comprobante"], id_sat=datos["id_sat"],
                 cod_estatus=respuesta.cod_estatus, estado=respuesta.estado,
-                mensaje=respuesta.mensaje, numero_cfdis=respuesta.numero_cfdis,
+                mensaje=mensaje, numero_cfdis=respuesta.numero_cfdis,
                 paquetes=respuesta.paquetes, recuperado=recuperada,
             )
             filas = catalogo.solicitudes_descarga_cliente(datos["cliente"])
         self._renderizar_historial(filas)
         estado = ESTADOS.get(respuesta.estado, "Estado desconocido")
         texto = f"{estado}. CFDI: {respuesta.numero_cfdis}. XML organizados: {copiados}; incorporados al visor: {insertados}."
+        if datos.get("modo_guardado") == "zip":
+            texto = f"{estado}. Paquetes ZIP guardados: {copiados}. Sin extracción ni importación automática."
         if respuesta.estado == 3 and datos.get("recuperado"):
             texto = f"{estado}. Esta solicitud ya se había recuperado; no se volvió a descargar el paquete."
         if errores:

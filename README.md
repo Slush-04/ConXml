@@ -54,7 +54,8 @@ Cuenta con una **interfaz gráfica moderna** y personalizable (GUI) y con una **
   en un equipo Windows real sigue pendiente.
 
 ### Flujo de clientes y Bóveda
-- Al iniciar se abre una ventana independiente para seleccionar el cliente activo;
+- Al iniciar se recupera el último cliente y pantalla de la sesión local. Si no hay
+  un cliente guardado, se abre una ventana independiente para seleccionar el cliente activo;
   desde esa ventana se pueden crear y editar la clave, nombre y RFC de cada cliente.
   Ya dentro del programa, **Cambiar cliente** vuelve a abrir esa ventana sin cerrar la aplicación.
 - **Bóveda** copia carpetas masivas y organiza los XML en
@@ -146,6 +147,14 @@ Desde la interfaz gráfica podrás:
 - Personalizar qué columnas ver en pantalla y ocultar las que no utilices.
 - Consultar el estatus SAT masivo con barra de progreso.
 - Generar y abrir directamente los reportes en Excel.
+- Abrir una vista previa PDF con doble clic y guardar PDF individuales o lotes ZIP.
+- Crear y restaurar respaldos locales desde Ajustes, incluyendo clientes, catálogo,
+  XML, preferencias y sesión. Al cerrar se guarda un respaldo automático (últimos 10).
+- Continuar con el último cliente, pantalla, filtros y carpetas de trabajo.
+
+La lectura conserva el catálogo por defecto. Consulta
+[PDF y respaldos locales](docs/pdf-y-respaldos.md) para las opciones de exportación,
+restauración y almacenamiento.
 
 ---
 

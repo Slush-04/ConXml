@@ -59,3 +59,7 @@ desktop.ini
 
 # PyInstaller temporary debug specs (keep main conxml.spec)
 conxml-*.spec
+
+# Local UI prefs
+data/preferencias.json
+data/boveda/

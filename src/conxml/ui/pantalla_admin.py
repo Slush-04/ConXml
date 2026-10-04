@@ -27,6 +27,10 @@ from conxml.cfdi.catalogos import (
     describir,
 )
 from conxml.config import Config
+from conxml import estado_local
+from conxml.archivos import abrir_local
+from conxml.export.pdf import generar_pdf, exportar_lote, nombre_pdf
+from conxml.ui.visor_pdf import VisorPDF
 from conxml.export.listado import (
     COMPLEMENTOS_IGNORADOS,
     _base_por_factor,
@@ -850,6 +854,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             displaycolumns="#all",
             show="headings",
             style="Tabla.Treeview",
+            selectmode="extended",
         )
         self._configurar_columnas(cols_ini)
         aplicar_estilo_tabla(self._tabla)
@@ -861,6 +866,9 @@ class PantallaAdministracion(ctk.CTkFrame):
         )
         self._tabla.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
         self._tabla.grid(row=0, column=0, sticky="nsew")
+        self._tabla.bind('<Double-1>', self._doble_clic_pdf)
+        self._tabla.bind('<Button-3>', self._menu_pdf)
+        self._tabla.bind('<Button-2>', self._menu_pdf)
         scroll_y.grid(row=0, column=1, sticky="ns")
         scroll_x.grid(row=1, column=0, sticky="ew")
         self._scroll_y = scroll_y
@@ -896,9 +904,17 @@ class PantallaAdministracion(ctk.CTkFrame):
 
         self.botones = [self._btn_leer, self._btn_validar, self._btn_exportar]
 
+        barra_pdf = ctk.CTkFrame(contenedor, fg_color='transparent')
+        barra_pdf.grid(row=6, column=0, columnspan=3, sticky='ew', pady=(8, 0))
+        for texto, comando in [('Vista previa PDF', self._vista_previa_pdf), ('Guardar PDF', self._guardar_pdf), ('PDF selección (ZIP)', self._pdf_seleccion), ('PDF vista (ZIP)', self._pdf_vista)]:
+            boton = BotonSecundario(barra_pdf, texto, comando)
+            boton.pack(side='left', padx=(0, 6))
+            self.botones.append(boton)
+        self._barra_pdf = barra_pdf
+
         # Resumen de operaciones
         self._resumen = ResumenOperacion(contenedor)
-        self._resumen.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(16, 0))
+        self._resumen.grid(row=7, column=0, columnspan=3, sticky="ew", pady=(16, 0))
 
         # Progreso
         self._progreso = ctk.CTkProgressBar(
@@ -908,17 +924,25 @@ class PantallaAdministracion(ctk.CTkFrame):
             corner_radius=4,
             height=6,
         )
-        self._progreso.grid(row=7, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+        self._progreso.grid(row=8, column=0, columnspan=3, sticky="ew", pady=(8, 0))
         self._progreso.set(0)
         self._lbl_progreso = ctk.CTkLabel(
             contenedor, text="", text_color=th.TEXTO_SECUNDARIO,
             font=(th.FUENTE, th.TAM_NOTA),
         )
-        self._lbl_progreso.grid(row=8, column=0, columnspan=3, sticky="w", pady=(2, 0))
+        self._lbl_progreso.grid(row=9, column=0, columnspan=3, sticky="w", pady=(2, 0))
 
         # Sin espacio reservado: el resumen y el progreso aparecen solo al operar
         self._detalles_usados = False
         self._aplicar_detalles(self.app.detalles_visibles)
+        sesion = estado_local.cargar().get('sesion', {}).get('pantallas', {}).get(self.modo, {})
+        for clave, valor in sesion.get('filtros', {}).items():
+            if clave in self._filtros and isinstance(valor, str):
+                self._filtros[clave].insert(0, valor)
+        self._carpeta.set(sesion.get('carpeta', ''))
+        vista = sesion.get('vista')
+        if self.modo == MODO_PAGOS and vista in dict(VISTAS_PAGOS):
+            self._cambiar_vista(dict(VISTAS_PAGOS)[vista])
 
     def al_alternar_detalles(self, visible: bool) -> None:
         self._aplicar_detalles(visible)
@@ -1196,7 +1220,7 @@ class PantallaAdministracion(ctk.CTkFrame):
         etiqueta = cliente
         self._cliente_cargado = cliente
 
-        limpiar_antes = True
+        limpiar_antes = False
         pantalla_ajustes = getattr(self.app, "_pantallas", {}).get("ajustes")
         if pantalla_ajustes and hasattr(pantalla_ajustes, "limpiar_al_leer"):
             limpiar_antes = pantalla_ajustes.limpiar_al_leer.get()
@@ -1331,10 +1355,93 @@ class PantallaAdministracion(ctk.CTkFrame):
 
     def _abrir_carpeta(self, ruta) -> None:
         try:
-            import os
-            os.startfile(str(Path(ruta).parent))  # noqa: S606
+            abrir_local(Path(ruta).parent)
         except OSError as exc:
             messagebox.showerror("No se pudo abrir la carpeta", str(exc), parent=self)
+
+    def _doble_clic_pdf(self, event) -> None:
+        item = self._tabla.identify_row(event.y)
+        if item:
+            self._tabla.selection_set(item)
+            self._vista_previa_pdf()
+
+    def _menu_pdf(self, event) -> None:
+        item = self._tabla.identify_row(event.y)
+        if not item:
+            return
+        if item not in self._tabla.selection():
+            self._tabla.selection_set(item)
+        menu = tk.Menu(self, tearoff=False)
+        menu.add_command(label='Vista previa PDF', command=self._vista_previa_pdf)
+        menu.add_command(label='Guardar PDF', command=self._guardar_pdf)
+        menu.add_command(label='PDF de selección (ZIP)', command=self._pdf_seleccion)
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _documentos_pdf(self, todos=False, individual=False):
+        items = self._tabla.get_children() if todos else self._tabla.selection()
+        if not items:
+            messagebox.showinfo('PDF', 'Selecciona un comprobante en la tabla.' if not todos else 'La vista no tiene comprobantes.', parent=self)
+            return []
+        if individual and len(items) != 1:
+            messagebox.showinfo('PDF', 'Selecciona una sola fila para abrir o guardar un PDF.', parent=self)
+            return []
+        columnas = list(self._tabla['columns'])
+        uuids = []
+        for item in items:
+            fila = dict(zip(columnas, self._tabla.item(item, 'values')))
+            uuid = fila.get('uuid') or fila.get('uuid_rep') or fila.get('uuid_doc')
+            if uuid and uuid not in uuids:
+                uuids.append(uuid)
+        with Catalogo(self.app.db_path) as cat:
+            documentos = {f['uuid']: dict(f) for f in cat.consulta(cliente=self._cliente_cargado)}
+        encontrados = [documentos[u] for u in uuids if u in documentos]
+        if not encontrados:
+            messagebox.showinfo('PDF', 'El XML de esta fila no está en el catálogo del cliente.', parent=self)
+        return encontrados
+
+    def _vista_previa_pdf(self):
+        documentos = self._documentos_pdf(individual=True)
+        if not documentos:
+            return
+        doc = documentos[0]
+        import uuid
+        destino = Config().base / 'cache' / 'pdf' / f'{uuid.uuid4().hex}_{nombre_pdf(doc["uuid"])}'
+        self.app.ejecutar(lambda: generar_pdf(Path(doc['ruta']), destino), lambda ruta: VisorPDF(self, ruta), 'Generando vista previa PDF')
+
+    def _guardar_pdf(self):
+        documentos = self._documentos_pdf(individual=True)
+        if not documentos:
+            return
+        doc = documentos[0]
+        destino = filedialog.asksaveasfilename(parent=self, title='Guardar comprobante PDF', initialfile=nombre_pdf(doc['uuid']), defaultextension='.pdf', filetypes=[('PDF', '*.pdf')])
+        if destino:
+            self.app.ejecutar(lambda: generar_pdf(Path(doc['ruta']), Path(destino)), self._pdf_guardado, 'Guardando PDF')
+
+    def _pdf_guardado(self, ruta):
+        self.app.registro(f'PDF guardado: {ruta}')
+        self._mostrar_detalles_operacion()
+        self._resumen.mostrar('PDF guardado', tono='verde', detalle=str(ruta), accion=('Abrir carpeta', lambda: abrir_local(Path(ruta).parent)))
+
+    def _pdf_seleccion(self):
+        self._pdf_lote(False)
+
+    def _pdf_vista(self):
+        self._pdf_lote(True)
+
+    def _pdf_lote(self, todos):
+        documentos = self._documentos_pdf(todos=todos)
+        if not documentos:
+            return
+        destino = filedialog.asksaveasfilename(parent=self, title=f'Guardar {len(documentos)} PDF en ZIP', initialfile=f'pdf_{self._cliente_cargado}_{datetime.now():%Y%m%d}.zip', defaultextension='.zip', filetypes=[('ZIP de PDF', '*.zip')])
+        if destino:
+            self.app.ejecutar(lambda: exportar_lote([Path(d['ruta']) for d in documentos], Path(destino)), self._pdf_lote_guardado, f'Generando {len(documentos)} PDF')
+
+    def _pdf_lote_guardado(self, resultado):
+        self._pdf_guardado(resultado.ruta)
+        self._resumen.mostrar(f'{resultado.generados} PDF guardados; {len(resultado.errores)} errores', tono='rojo' if resultado.errores else 'verde', detalle=str(resultado.ruta), accion=('Abrir carpeta', lambda: abrir_local(resultado.ruta.parent)))
+
+    def estado_sesion(self):
+        return {'filtros': {k: v.get() for k, v in self._filtros.items()}, 'carpeta': self._carpeta.get(), 'vista': self._vista}
 
     # ── Tabla ─────────────────────────────────────────────────────────────────
 

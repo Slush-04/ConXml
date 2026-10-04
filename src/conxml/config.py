@@ -30,7 +30,7 @@ class Config:
                 app_support.mkdir(parents=True, exist_ok=True)
                 return app_support
             return Path(sys.executable).resolve().parent / "data"
-        return Path("data")
+        return Path(__file__).resolve().parents[2] / "data"
 
     @property
     def db_path(self) -> Path:
@@ -43,9 +43,29 @@ class Config:
     @property
     def carpeta_boveda(self) -> Path:
         """Raíz del archivo organizado de XML por cliente, tipo y periodo."""
-        return self.base / "boveda"
+        destino = self.opciones_descarga_sat.get("carpeta_xml")
+        return Path(destino).expanduser().resolve() if destino else self.base / "boveda"
+
+    @property
+    def opciones_descarga_sat(self) -> dict:
+        from conxml.estado_local import cargar
+        opciones = cargar(self.preferencias_path).get("descargas_sat", {})
+        return opciones if isinstance(opciones, dict) else {}
+
+    @property
+    def modo_descarga_sat(self) -> str:
+        return "zip" if self.opciones_descarga_sat.get("modo") == "zip" else "organizado"
+
+    @property
+    def carpeta_zip_sat(self) -> Path:
+        destino = self.opciones_descarga_sat.get("carpeta_zip")
+        return Path(destino).expanduser().resolve() if destino else self.base / "descargas_sat"
 
     @property
     def preferencias_path(self) -> Path:
         """Preferencias locales de la interfaz, separadas del catálogo SQLite."""
         return self.base / "preferencias.json"
+
+    @property
+    def respaldos(self) -> Path:
+        return self.base / "respaldos"

@@ -1,4 +1,4 @@
-"""Comprueba el acceso manual y que la opción pendiente no envíe solicitudes."""
+"""Acceso al portal y preferencias de guardado SAT en la interfaz."""
 from types import SimpleNamespace
 
 import pytest
@@ -18,47 +18,32 @@ def test_abrir_portal_oficial(monkeypatch, resultado):
     assert llamadas == [("https://portalcfdi.facturaelectronica.sat.gob.mx/", {"new": 2})]
 
 
-@pytest.mark.parametrize("error", [False, True])
-def test_error_navegador_muestra_ruta_manual(monkeypatch, error):
-    avisos = []
-    def abrir():
-        if error:
-            raise OSError("Navegador no disponible")
-        return False
-    monkeypatch.setattr("conxml.ui.pantalla_descargas.abrir_portal_sat", abrir)
-    monkeypatch.setattr("conxml.ui.pantalla_descargas.messagebox.showerror", lambda *args, **kw: avisos.append(args))
-    PantallaDescargas._abrir_portal(SimpleNamespace())
-    assert len(avisos) == 1
-    assert descargas.PORTAL_CFDI_URL in avisos[0][1]
-
-
-def test_pantalla_manual_y_automatica_pendiente(monkeypatch):
+def test_configuracion_guardado_persiste_y_separa_carpetas(tmp_path, monkeypatch):
     import tkinter as tk
     import customtkinter as ctk
-
+    from conxml.config import Config
+    from conxml.ui.pantalla_ajustes import PantallaAjustes
+    monkeypatch.setenv("CONXML_DATA_DIR", str(tmp_path / "datos"))
     try:
         raiz = ctk.CTk()
     except tk.TclError:
         pytest.skip("No hay pantalla disponible")
-    llamadas = []
-    monkeypatch.setattr("conxml.ui.pantalla_descargas.abrir_portal_sat", lambda: llamadas.append("portal") or True)
-    app = SimpleNamespace(cliente_actual="CLIENTE_1", navegar=lambda clave: llamadas.append(clave))
     try:
-        raiz.geometry("700x500")
-        pantalla = PantallaDescargas(raiz, app)
-        pantalla.pack(fill="both", expand=True)
-        pantalla.al_mostrar()
-        pantalla.aplicar_modo_compacto(True, True)
-        raiz.update()
-        assert pantalla._btn_automatica.cget("state") == "disabled"
-        assert "En proceso" in pantalla._btn_automatica.cget("text")
-        pantalla._btn_automatica.invoke()
-        assert llamadas == []
-        pantalla._btn_portal.invoke()
-        assert llamadas == ["portal"]
-        app.cliente_actual = "CLIENTE_2"
-        pantalla.al_mostrar()
-        assert "CLIENTE_2" in pantalla._cliente_lbl.cget("text")
-        assert int(pantalla._contenedor.pack_info()["padx"]) == 12
+        app = SimpleNamespace(detalles_visibles=False)
+        ajustes = PantallaAjustes(raiz, app)
+        ajustes.pack(fill="both", expand=True)
+        ajustes._carpeta_sat.set(str(tmp_path / "xml"))
+        ajustes._guardar_destino_sat()
+        assert Config().carpeta_boveda == tmp_path / "xml"
+        ajustes._modo_sat.set("Conservar ZIP sin extraer")
+        ajustes._cambiar_modo_sat(ajustes._modo_sat.get())
+        ajustes._carpeta_sat.set(str(tmp_path / "zip"))
+        ajustes._guardar_destino_sat()
+        raiz.update_idletasks()
+        assert Config().modo_descarga_sat == "zip"
+        assert Config().carpeta_zip_sat == tmp_path / "zip"
+        assert Config().carpeta_boveda == tmp_path / "xml"
+        ajustes._cargar_destino_sat()
+        assert ajustes._carpeta_sat.get() == str(tmp_path / "zip")
     finally:
         raiz.destroy()

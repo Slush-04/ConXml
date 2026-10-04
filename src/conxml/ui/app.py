@@ -14,6 +14,8 @@ import customtkinter as ctk
 from conxml.boveda import inicializar_boveda
 from conxml.catalog.db import Catalogo
 from conxml.config import Config
+from conxml import estado_local
+from conxml.respaldos import respaldo_automatico
 from conxml.ui import responsive as resp
 from conxml.ui import theme as th
 from conxml.ui.pantalla_admin import (
@@ -110,7 +112,8 @@ class ConXmlApp(ctk.CTkFrame):
         self.db_path = Config().db_path
         self._cola: queue.Queue = queue.Queue()
         self._ocupada = False
-        self._detalles_visibles = True
+        sesion = estado_local.cargar().get('sesion', {})
+        self._detalles_visibles = sesion.get('detalles_visibles', True)
         # Estado adaptable (no recrea tablas ni pierde selección/datos).
         self._ancho_compacto = False
         self._alto_compacto = False
@@ -118,6 +121,10 @@ class ConXmlApp(ctk.CTkFrame):
         self._resize_after: str | None = None
         self._sidebar_visible = True
         self.cliente_actual: str | None = cliente_actual
+        if not self.cliente_actual and sesion.get('cliente'):
+            with Catalogo(self.db_path) as cat:
+                if cat.obtener_cliente(sesion['cliente']):
+                    self.cliente_actual = sesion['cliente']
 
         master.title("ConXml — Gestor CFDI")
         try:
@@ -131,7 +138,8 @@ class ConXmlApp(ctk.CTkFrame):
         master.rowconfigure(0, weight=1)
         self.grid(sticky="nsew", padx=0, pady=0)
         self.columnconfigure(1, weight=1)
-        self.rowconfigure(0, weight=1)
+        self.rowconfigure(0, weight=0)
+        self.rowconfigure(1, weight=1)
 
         # Panel lateral oscuro (Sidebar)
         self._panel_lateral = ctk.CTkFrame(
@@ -141,14 +149,19 @@ class ConXmlApp(ctk.CTkFrame):
             corner_radius=0,
             border_width=0,
         )
-        self._panel_lateral.grid(row=0, column=0, sticky="ns", rowspan=2)
+        self._panel_lateral.grid(row=1, column=0, sticky="ns", rowspan=2)
         self._panel_lateral.grid_propagate(False)
 
-        ctk.CTkLabel(
-            self._panel_lateral, text="CONXML",
+        self._cabecera_lateral = ctk.CTkFrame(self, width=resp.ANCHO_SIDEBAR,
+                                            height=68, fg_color=th.FONDO_SIDEBAR, corner_radius=0)
+        self._cabecera_lateral.grid(row=0, column=0, sticky="ew")
+        self._cabecera_lateral.pack_propagate(False)
+        self._marca_lateral = ctk.CTkLabel(
+            self._cabecera_lateral, text="CONXML",
             text_color=th.SIDEBAR_TEXTO_ACTIVO,
             font=(th.FUENTE, th.TAM_H1, "bold"),
-        ).pack(anchor="w", padx=16, pady=(24, 4))
+        )
+        self._marca_lateral.pack(side="left", padx=(16, 0))
         self._lbl_subtitulo = ctk.CTkLabel(
             self._panel_lateral, text="Gestor CFDI del despacho",
             text_color=th.SIDEBAR_TEXTO,
@@ -261,7 +274,7 @@ class ConXmlApp(ctk.CTkFrame):
 
         # Área de contenido
         self._contenido = ctk.CTkFrame(self, fg_color=th.FONDO, corner_radius=0)
-        self._contenido.grid(row=0, column=1, sticky="nsew")
+        self._contenido.grid(row=0, column=1, sticky="nsew", rowspan=2)
 
         self._pantallas: dict[str, ctk.CTkFrame | tk.Frame] = {}
         self._pantallas["clientes"] = PantallaClientes(self._contenido, self)
@@ -274,26 +287,25 @@ class ConXmlApp(ctk.CTkFrame):
         self._pantallas["ajustes"] = PantallaAjustes(self._contenido, self)
         # La pantalla inicial activa se define al llamar a navegar("resumen")
 
-        # Control flotante para recuperar el menú aunque esté oculto.
+        # El control permanece en la cabecera lateral al contraer la navegación.
         self._btn_sidebar = ctk.CTkButton(
-            self._contenido,
-            text="☰ Menú",
-            width=76,
+            self._cabecera_lateral,
+            text="☰",
+            width=36,
             height=30,
-            fg_color=th.FONDO_TARJETA,
-            hover_color=th.PRIMARIO_FONDO,
-            text_color=th.TEXTO_SECUNDARIO,
-            border_width=1,
-            border_color=th.BORDE,
+            fg_color="transparent",
+            hover_color=th.SIDEBAR_HOVER,
+            text_color=th.SIDEBAR_TEXTO_ACTIVO,
+            border_width=0,
             corner_radius=5,
             font=(th.FUENTE, th.TAM_NOTA, "bold"),
             command=self.alternar_sidebar,
         )
-        self._btn_sidebar.place(x=4, y=4)
+        self._btn_sidebar.pack(side="right", padx=8)
 
         # Consola de Registro inferior (ocultable con "Ocultar detalles")
         self._barra = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
-        self._barra.grid(row=1, column=1, sticky="ew", padx=24, pady=(0, 16))
+        self._barra.grid(row=2, column=1, sticky="ew", padx=24, pady=(0, 16))
 
         cabecera_barra = ctk.CTkFrame(self._barra, fg_color="transparent")
         cabecera_barra.pack(side="top", fill="x", pady=(0, 6))
@@ -335,9 +347,13 @@ class ConXmlApp(ctk.CTkFrame):
         self._registro.tag_configure("detalle", foreground=th.TEXTO_SECUNDARIO)
 
         master.protocol("WM_DELETE_WINDOW", self._al_cerrar)
-        self.after(80, self._procesar_cola)
+        self._poll_after = self.after(80, self._procesar_cola)
         self._pantalla_actual: ctk.CTkFrame | tk.Frame | None = None
-        self.navegar("resumen" if self.cliente_actual else "clientes", primero=True)
+        clave_inicial = sesion.get('pantalla', 'resumen')
+        if clave_inicial not in self._pantallas or clave_inicial == 'clientes':
+            clave_inicial = 'resumen'
+        self.navegar(clave_inicial if self.cliente_actual else 'clientes', primero=True)
+        self.mostrar_detalles(self._detalles_visibles, forzar=True)
         if self.cliente_actual:
             inicializar_boveda(Config(), self.cliente_actual)
         self._actualizar_cliente_sidebar()
@@ -394,6 +410,7 @@ class ConXmlApp(ctk.CTkFrame):
         return base
 
     def navegar(self, clave: str, primero: bool = False) -> None:
+        self._clave_pantalla = clave
         if clave in self._grupo_de:
             self._expandir_grupo(self._grupo_de[clave])
 
@@ -428,6 +445,8 @@ class ConXmlApp(ctk.CTkFrame):
             self._btn_sidebar.lift()
         except Exception:
             pass
+        if not primero:
+            self.guardar_sesion()
 
     def seleccionar_cliente(self, clave: str) -> None:
         """Fija el cliente de trabajo y entra al resumen principal."""
@@ -487,10 +506,14 @@ class ConXmlApp(ctk.CTkFrame):
         try:
             if self._sidebar_visible:
                 self.columnconfigure(0, weight=0, minsize=0)
+                self._cabecera_lateral.configure(width=self.ancho_sidebar)
+                self._marca_lateral.pack(side="left", padx=(16, 0), before=self._btn_sidebar)
                 self._panel_lateral.grid()
             else:
                 self.columnconfigure(0, weight=0, minsize=0)
                 self._panel_lateral.grid_remove()
+                self._marca_lateral.pack_forget()
+                self._cabecera_lateral.configure(width=52)
             self.after_idle(self._aplicar_responsive_inicial)
         except Exception:
             self._sidebar_visible = not self._sidebar_visible
@@ -581,6 +604,9 @@ class ConXmlApp(ctk.CTkFrame):
         ancho = resp.ANCHO_SIDEBAR_COMPACTO if compacto else resp.ANCHO_SIDEBAR
         try:
             self._panel_lateral.configure(width=ancho)
+            self._marca_lateral.configure(font=(th.FUENTE, 14 if compacto else th.TAM_H1, "bold"))
+            if self._sidebar_visible:
+                self._cabecera_lateral.configure(width=ancho)
         except Exception:
             pass
         for clave, boton in self._botones.items():
@@ -692,9 +718,15 @@ class ConXmlApp(ctk.CTkFrame):
                     self._terminar_operacion()
                     _, al_terminar, resultado = item
                     al_terminar(resultado)
+                    try:
+                        existe = self.winfo_exists()
+                    except tk.TclError:
+                        return
+                    if not existe:
+                        return
         except queue.Empty:
             pass
-        self.after(80, self._procesar_cola)
+        self._poll_after = self.after(80, self._procesar_cola)
 
     def _terminar_operacion(self) -> None:
         self._ocupada = False
@@ -710,7 +742,30 @@ class ConXmlApp(ctk.CTkFrame):
                 parent=self,
             )
             return
+        self.guardar_sesion()
+        if estado_local.cargar().get('respaldo_al_cerrar', True):
+            self.ejecutar(lambda: respaldo_automatico(Config().base), self._cerrar_con_respaldo, 'Guardando respaldo local antes de cerrar')
+        else:
+            self.master.destroy()
+
+    def _cerrar_con_respaldo(self, resultado):
+        if resultado.faltantes:
+            messagebox.showwarning('Respaldo local', f'Se guardó el respaldo, pero {len(resultado.faltantes)} XML ya no están en su ubicación original. Los faltantes están registrados en el manifiesto del respaldo.', parent=self)
         self.master.destroy()
+
+    def guardar_sesion(self):
+        pantallas = {p.modo: p.estado_sesion() for p in self._pantallas.values() if hasattr(p, 'estado_sesion')}
+        estado_local.guardar({'sesion': {'cliente': self.cliente_actual, 'pantalla': getattr(self, '_clave_pantalla', 'resumen'), 'detalles_visibles': self._detalles_visibles, 'pantallas': pantallas}})
+
+    def recargar_datos_locales(self):
+        """Reconstruye las pantallas después de restaurar sin reescribir la sesión."""
+        self.after_cancel(self._poll_after)
+        if self._resize_after:
+            self.after_cancel(self._resize_after)
+        self.master.unbind('<Configure>')
+        raiz = self.master
+        self.destroy()
+        raiz._conxml_app = ConXmlApp(raiz)
 
 
 def main() -> None:
@@ -733,13 +788,14 @@ def main() -> None:
         raiz.deiconify()
         raiz._conxml_app = ConXmlApp(raiz, cliente_actual=clave)
 
-    selector = _mostrar_selector_clientes(
-        raiz,
-        abrir_programa,
-        Config().db_path,
-        on_close=raiz.destroy,
-    )
-    raiz._selector_clientes = selector
+    cliente = estado_local.cargar().get('sesion', {}).get('cliente')
+    with Catalogo(Config().db_path) as catalogo:
+        existe = bool(cliente and catalogo.obtener_cliente(cliente))
+    if existe:
+        abrir_programa(cliente)
+    else:
+        selector = _mostrar_selector_clientes(raiz, abrir_programa, Config().db_path, on_close=raiz.destroy)
+        raiz._selector_clientes = selector
     raiz.mainloop()
 
 

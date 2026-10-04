@@ -6,7 +6,7 @@
 
 import os
 import sys
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 excludes = ["pytest", "_pytest", "tests"]
 
@@ -34,7 +34,8 @@ a_gui = Analysis(
     pathex=["src"],
     binaries=[],
     datas=datas_gui,
-    hiddenimports=["customtkinter", "darkdetect"],
+    # ReportLab carga por nombre los tipos de código de barras al importar QR.
+    hiddenimports=["customtkinter", "darkdetect"] + collect_submodules("reportlab.graphics.barcode"),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
