@@ -58,27 +58,57 @@ a_cli = Analysis(
 pyz_gui = PYZ(a_gui.pure)
 pyz_cli = PYZ(a_cli.pure)
 
-exe_gui = EXE(
-    pyz_gui,
-    a_gui.scripts,
-    a_gui.binaries,
-    a_gui.datas,
-    [],
-    name="conxml",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=usar_upx,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,
-    icon=icono_principal,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-)
+if sys.platform == "darwin":
+    # Los bundles .app de macOS deben contener el layout onedir. Empaquetar
+    # todo dentro de un ejecutable onefile provoca fallos de LaunchServices.
+    exe_gui = EXE(
+        pyz_gui,
+        a_gui.scripts,
+        [],
+        exclude_binaries=True,
+        name="conxml",
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=usar_upx,
+        console=False,
+        icon=icono_principal,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+    )
+    coll_gui = COLLECT(
+        exe_gui,
+        a_gui.binaries,
+        a_gui.datas,
+        strip=False,
+        upx=usar_upx,
+        name="conxml",
+    )
+else:
+    exe_gui = EXE(
+        pyz_gui,
+        a_gui.scripts,
+        a_gui.binaries,
+        a_gui.datas,
+        [],
+        name="conxml",
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=usar_upx,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=False,
+        icon=icono_principal,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+    )
 
 exe_cli = EXE(
     pyz_cli,
@@ -105,7 +135,7 @@ exe_cli = EXE(
 # En macOS empaquetamos el ejecutable gráfico como ConXml.app
 if sys.platform == "darwin":
     app = BUNDLE(
-        exe_gui,
+        coll_gui,
         name="ConXml.app",
         icon=icono_principal if os.path.exists(icono_principal) else None,
         bundle_identifier="com.conxml.app",
