@@ -10,6 +10,7 @@ from pathlib import Path
 from tkinter import messagebox, scrolledtext
 
 import customtkinter as ctk
+from PIL import Image
 
 from conxml.boveda import inicializar_boveda
 from conxml.catalog.db import Catalogo
@@ -138,6 +139,7 @@ class ConXmlApp(ctk.CTkFrame):
         master.columnconfigure(0, weight=1)
         master.rowconfigure(0, weight=1)
         self.grid(sticky="nsew", padx=0, pady=0)
+        self.columnconfigure(0, weight=0, minsize=resp.ANCHO_SIDEBAR)
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=0)
         self.rowconfigure(1, weight=1)
@@ -150,17 +152,33 @@ class ConXmlApp(ctk.CTkFrame):
             corner_radius=0,
             border_width=0,
         )
-        self._panel_lateral.grid(row=1, column=0, sticky="ns", rowspan=2)
+        # El encabezado y el cuerpo deben ocupar exactamente la misma columna.
+        # ``ns`` dejaba el cuerpo con su ancho solicitado y podía dejar franjas
+        # claras cuando el encabezado calculaba una columna más ancha.
+        self._panel_lateral.grid(row=1, column=0, sticky="nsew", rowspan=2)
         self._panel_lateral.grid_propagate(False)
 
         self._cabecera_lateral = ctk.CTkFrame(self, width=resp.ANCHO_SIDEBAR,
                                             height=68, fg_color=th.FONDO_SIDEBAR, corner_radius=0)
-        self._cabecera_lateral.grid(row=0, column=0, sticky="ew")
+        self._cabecera_lateral.grid(row=0, column=0, sticky="nsew")
         self._cabecera_lateral.pack_propagate(False)
+        self._logo_lateral = None
+        ruta_logo = _ruta_icono("png")
+        if ruta_logo is not None:
+            try:
+                imagen_logo = Image.open(ruta_logo)
+                self._logo_lateral = ctk.CTkImage(
+                    light_image=imagen_logo,
+                    dark_image=imagen_logo,
+                    size=(22, 22),
+                )
+            except Exception:
+                self._logo_lateral = None
         self._marca_lateral = ctk.CTkLabel(
-            self._cabecera_lateral, text="CONXML",
+            self._cabecera_lateral, text="CONXML", image=self._logo_lateral,
+            compound="left", padx=0,
             text_color=th.SIDEBAR_TEXTO_ACTIVO,
-            font=(th.FUENTE, th.TAM_H1, "bold"),
+            font=(th.FUENTE, 18, "bold"),
         )
         self._marca_lateral.pack(side="left", padx=(16, 0))
         self._lbl_subtitulo = ctk.CTkLabel(
@@ -507,12 +525,12 @@ class ConXmlApp(ctk.CTkFrame):
         self._sidebar_visible = not self._sidebar_visible
         try:
             if self._sidebar_visible:
-                self.columnconfigure(0, weight=0, minsize=0)
+                self.columnconfigure(0, weight=0, minsize=self.ancho_sidebar)
                 self._cabecera_lateral.configure(width=self.ancho_sidebar)
                 self._marca_lateral.pack(side="left", padx=(16, 0), before=self._btn_sidebar)
                 self._panel_lateral.grid()
             else:
-                self.columnconfigure(0, weight=0, minsize=0)
+                self.columnconfigure(0, weight=0, minsize=52)
                 self._panel_lateral.grid_remove()
                 self._marca_lateral.pack_forget()
                 self._cabecera_lateral.configure(width=52)
@@ -605,8 +623,9 @@ class ConXmlApp(ctk.CTkFrame):
     def _aplicar_sidebar(self, compacto: bool) -> None:
         ancho = resp.ANCHO_SIDEBAR_COMPACTO if compacto else resp.ANCHO_SIDEBAR
         try:
+            self.columnconfigure(0, weight=0, minsize=ancho if self._sidebar_visible else 52)
             self._panel_lateral.configure(width=ancho)
-            self._marca_lateral.configure(font=(th.FUENTE, 14 if compacto else th.TAM_H1, "bold"))
+            self._marca_lateral.configure(font=(th.FUENTE, 15 if compacto else 18, "bold"))
             if self._sidebar_visible:
                 self._cabecera_lateral.configure(width=ancho)
         except Exception:
