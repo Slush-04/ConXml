@@ -15,8 +15,17 @@ if ($LASTEXITCODE -ne 0) { throw "Versiones inconsistentes." }
 & $py -m pytest
 if ($LASTEXITCODE -ne 0) { throw "Fallaron las pruebas." }
 & "$PSScriptRoot\build_exe.ps1"
-if (-not (Test-Path $ISCC)) { throw "Instala Inno Setup 6.3+ o pasa -ISCC ruta." }
 $version = & $py -c 'from conxml import __version__; print(__version__)'
+
+# Empaquetar artefacto ZIP para actualización directa sin instalador
+$zipPath = Join-Path $root "dist\ConXml-$version-windows-x64.zip"
+if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+Compress-Archive -Path "$root\dist\conxml.exe", "$root\dist\conxml-cli.exe" -DestinationPath $zipPath -Force
+$zipHash = (Get-FileHash -Algorithm SHA256 $zipPath).Hash.ToLower()
+"$zipHash  $(Split-Path -Leaf $zipPath)" | Set-Content -Encoding ascii "$zipPath.sha256"
+Write-Host "Paquete actualizable listo: $zipPath"
+
+if (-not (Test-Path $ISCC)) { throw "Instala Inno Setup 6.3+ o pasa -ISCC ruta." }
 & $ISCC "/DAppVersion=$version" installer\conxml.iss
 if ($LASTEXITCODE -ne 0) { throw "Falló el instalador." }
 $exe = Join-Path $root "dist\installer\ConXml-Setup-$version-windows-x64.exe"

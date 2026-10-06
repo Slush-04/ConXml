@@ -15,6 +15,7 @@ from PIL import Image
 from conxml.boveda import inicializar_boveda
 from conxml.catalog.db import Catalogo
 from conxml.config import Config
+from conxml.diagnostico import registrar_inicio, mostrar_error_fatal, obtener_ruta_log
 from conxml import estado_local
 from conxml.respaldos import respaldo_automatico
 from conxml.ui import responsive as resp
@@ -95,7 +96,7 @@ def _aplicar_icono(raiz: ctk.CTk) -> None:
     ruta_ico = _ruta_icono("ico")
     try:
         if ruta_png is not None:
-            foto = tk.PhotoImage(file=str(ruta_png))
+            foto = tk.PhotoImage(file=str(ruta_png), master=raiz)
             raiz._icono_conxml = foto
             raiz.wm_iconbitmap()
             raiz.iconphoto(True, foto)
@@ -111,6 +112,16 @@ class ConXmlApp(ctk.CTkFrame):
     def __init__(self, master: ctk.CTk, cliente_actual: str | None = None) -> None:
         super().__init__(master, fg_color=th.FONDO, corner_radius=0)
         self.master = master
+        try:
+            import PIL.ImageTk
+            PIL.ImageTk._default_root = master
+        except Exception:
+            pass
+        try:
+            import tkinter as tk
+            tk._default_root = master
+        except Exception:
+            pass
         self.db_path = Config().db_path
         self._cola: queue.Queue = queue.Queue()
         self._ocupada = False
@@ -152,9 +163,6 @@ class ConXmlApp(ctk.CTkFrame):
             corner_radius=0,
             border_width=0,
         )
-        # El encabezado y el cuerpo deben ocupar exactamente la misma columna.
-        # ``ns`` dejaba el cuerpo con su ancho solicitado y podía dejar franjas
-        # claras cuando el encabezado calculaba una columna más ancha.
         self._panel_lateral.grid(row=1, column=0, sticky="nsew", rowspan=2)
         self._panel_lateral.grid_propagate(False)
 
@@ -790,51 +798,82 @@ class ConXmlApp(ctk.CTkFrame):
 
 
 def main() -> None:
+    registrar_inicio("GUI")
+    mutex = None
     if sys.platform == "win32":
         # Mismo mutex que el instalador: evita escribir datos con dos instancias
         # y que Setup sustituya ejecutables mientras ConXml sigue abierto.
+        # Si el instalador o una instancia previa está cerrándose (p. ej. tras actualizar),
+        # reintentamos brevemente antes de reportar conflicto de mutex.
         import ctypes
+        import time
         kernel = ctypes.WinDLL('kernel32', use_last_error=True)
         kernel.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
         kernel.CreateMutexW.restype = ctypes.c_void_p
-        mutex = kernel.CreateMutexW(None, False, 'ConXmlApplication')
-        if not mutex:
-            raise ctypes.WinError(ctypes.get_last_error())
-        if ctypes.get_last_error() == 183:
-            messagebox.showinfo('ConXml', 'ConXml ya está abierto. Cierra la otra ventana antes de continuar.')
+        kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel.CloseHandle.restype = ctypes.c_int
+
+        adquirido = False
+        for _ in range(25):
+            mutex = kernel.CreateMutexW(None, False, 'ConXmlApplication')
+            if not mutex:
+                break
+            if ctypes.get_last_error() != 183:
+                adquirido = True
+                break
+            kernel.CloseHandle(mutex)
+            mutex = None
+            time.sleep(0.1)
+
+        if not adquirido:
+            mostrar_error_fatal('ConXml', 'ConXml ya está abierto. Cierra la otra ventana antes de continuar.')
             return
         try:
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except Exception:
             pass
 
-    th.configurar_ctk()
-    raiz = ctk.CTk()
-    raiz.configure(fg_color=th.FONDO)
-    _aplicar_icono(raiz)
-    # La selección de cliente es la primera ventana. La ventana principal se
-    # construye después de seleccionar para que siempre arranque con contexto.
-    raiz.withdraw()
     try:
-        Config().inicializar()
-    except OSError as exc:
-        messagebox.showerror('Datos de ConXml', f'No se pudieron preparar las carpetas de datos:\n{exc}', parent=raiz)
-        raiz.destroy()
-        return
+        th.configurar_ctk()
+        raiz = ctk.CTk()
+        try:
+            import PIL.ImageTk
+            PIL.ImageTk._default_root = raiz
+        except Exception:
+            pass
+        try:
+            import tkinter as tk
+            tk._default_root = raiz
+        except Exception:
+            pass
+        raiz.configure(fg_color=th.FONDO)
+        _aplicar_icono(raiz)
+        # La selección de cliente es la primera ventana. La ventana principal se
+        # construye después de seleccionar para que siempre arranque con contexto.
+        raiz.withdraw()
+        try:
+            Config().inicializar()
+        except OSError as exc:
+            messagebox.showerror('Datos de ConXml', f'No se pudieron preparar las carpetas de datos:\n{exc}', parent=raiz)
+            raiz.destroy()
+            return
 
-    def abrir_programa(clave: str) -> None:
-        raiz.deiconify()
-        raiz._conxml_app = ConXmlApp(raiz, cliente_actual=clave)
+        def abrir_programa(clave: str) -> None:
+            raiz.deiconify()
+            raiz._conxml_app = ConXmlApp(raiz, cliente_actual=clave)
 
-    cliente = estado_local.cargar().get('sesion', {}).get('cliente')
-    with Catalogo(Config().db_path) as catalogo:
-        existe = bool(cliente and catalogo.obtener_cliente(cliente))
-    if existe:
-        abrir_programa(cliente)
-    else:
-        selector = _mostrar_selector_clientes(raiz, abrir_programa, Config().db_path, on_close=raiz.destroy)
-        raiz._selector_clientes = selector
-    raiz.mainloop()
+        cliente = estado_local.cargar().get('sesion', {}).get('cliente')
+        with Catalogo(Config().db_path) as catalogo:
+            existe = bool(cliente and catalogo.obtener_cliente(cliente))
+        if existe:
+            abrir_programa(cliente)
+        else:
+            selector = _mostrar_selector_clientes(raiz, abrir_programa, Config().db_path, on_close=raiz.destroy)
+            raiz._selector_clientes = selector
+        raiz.mainloop()
+    except Exception as exc:
+        mostrar_error_fatal("Error al iniciar ConXml", f"Fallo durante la inicialización de la interfaz:\n{exc}")
+        raise
 
 
 def _mostrar_selector_clientes(parent, on_selected, db_path, on_close=None):

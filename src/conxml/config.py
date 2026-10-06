@@ -77,9 +77,41 @@ class Config:
     def respaldos(self) -> Path:
         return self.base / "respaldos"
 
+    @property
+    def logs_dir(self) -> Path:
+        """Ruta persistente de diagnóstico y registros de ejecución."""
+        env_dir = os.environ.get("CONXML_LOG_DIR")
+        if env_dir:
+            return Path(env_dir).resolve()
+        if getattr(sys, "frozen", False):
+            if sys.platform == "win32":
+                return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "ConXml" / "logs"
+            if sys.platform == "darwin":
+                app_logs = Path.home() / "Library" / "Logs" / "ConXml"
+                app_logs.mkdir(parents=True, exist_ok=True)
+                return app_logs
+            return Path(sys.executable).resolve().parent / "logs"
+        return self.base.parent / "logs"
+
+    @property
+    def updates_dir(self) -> Path:
+        """Ruta de descarga y preparación de actualizaciones."""
+        env_dir = os.environ.get("CONXML_UPDATES_DIR")
+        if env_dir:
+            return Path(env_dir).resolve()
+        if getattr(sys, "frozen", False):
+            if sys.platform == "win32":
+                return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "ConXml" / "updates"
+            if sys.platform == "darwin":
+                updates = Path.home() / "Library" / "Application Support" / "ConXml" / "updates"
+                updates.mkdir(parents=True, exist_ok=True)
+                return updates
+            return Path(sys.executable).resolve().parent / "updates"
+        return self.base.parent / "updates"
+
     def inicializar(self) -> None:
         for ruta in (self.base, self.carpeta_entrada, self.carpeta_boveda,
-                     self.carpeta_zip_sat, self.respaldos):
+                     self.carpeta_zip_sat, self.respaldos, self.logs_dir, self.updates_dir):
             ruta.mkdir(parents=True, exist_ok=True)
 
 

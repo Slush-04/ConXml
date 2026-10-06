@@ -1,19 +1,28 @@
-"""Actualizaciones voluntarias desde Releases públicos, nunca desde commits."""
+"""Actualizaciones voluntarias desde Releases públicos, nunca desde commits.
+
+Soporta actualización directa mediante paquete ZIP (conxml.exe y conxml-cli.exe)
+con validación SHA-256, reemplazo seguro mediante helper desacoplado, rollback
+automático en caso de fallo, y preservación total de datos del usuario.
+Conserva el instalador interactivo como método de instalación inicial y rescate.
+"""
 from __future__ import annotations
 
 import hashlib
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
 from conxml import __version__
+from conxml.config import Config
 
 REPOSITORY = "Slush-04/ConXml"
 LATEST_URL = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
@@ -37,6 +46,153 @@ class Release:
     sha256: str
     size: int
     name: str
+    kind: str = "zip"  # "zip" para reemplazo directo o "installer" para setup interactivo
+
+
+def generar_script_actualizador(
+    script_path: Path,
+    *,
+    parent_pid: int,
+    target_dir: Path,
+    staging_dir: Path,
+    backup_dir: Path,
+    log_file: Path,
+) -> Path:
+    """Genera el script PowerShell que reemplaza los binarios tras el cierre de ConXml."""
+    contenido = f"""# Script de actualización desatendida para ConXml
+param(
+    [Parameter(Mandatory=$false)][int]$ParentPid = {parent_pid},
+    [Parameter(Mandatory=$false)][string]$TargetDir = '{str(target_dir).replace("'", "''")}',
+    [Parameter(Mandatory=$false)][string]$StagingDir = '{str(staging_dir).replace("'", "''")}',
+    [Parameter(Mandatory=$false)][string]$BackupDir = '{str(backup_dir).replace("'", "''")}',
+    [Parameter(Mandatory=$false)][string]$LogFile = '{str(log_file).replace("'", "''")}'
+)
+$ErrorActionPreference = "Stop"
+
+function Write-Log($msg) {{
+    $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    $line = "$timestamp [ACTUALIZADOR] $msg"
+    Write-Output $line
+    if ($LogFile) {{
+        try {{
+            $dir = Split-Path -Parent $LogFile
+            if (-not (Test-Path $dir)) {{ New-Item -ItemType Directory -Path $dir -Force | Out-Null }}
+            Add-Content -Path $LogFile -Value $line -Encoding utf8
+        }} catch {{}}
+    }}
+}}
+
+Write-Log "Iniciando actualizador para PID $ParentPid hacia $TargetDir"
+
+# 1. Esperar a que el proceso padre termine
+if ($ParentPid -gt 0) {{
+    $waited = 0
+    $timeout = 30
+    while ($waited -lt $timeout) {{
+        $p = Get-Process -Id $ParentPid -ErrorAction SilentlyContinue
+        if (-not $p) {{
+            Write-Log "Proceso padre $ParentPid finalizado tras $waited s."
+            break
+        }}
+        Start-Sleep -Milliseconds 500
+        $waited += 0.5
+    }}
+    if (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue) {{
+        Write-Log "ERROR: El proceso padre $ParentPid no se cerró a tiempo. Abortando actualización."
+        exit 1
+    }}
+}}
+
+Start-Sleep -Milliseconds 600
+
+# 2. Respaldar binarios existentes
+if (-not (Test-Path $BackupDir)) {{
+    New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null
+}}
+
+$archivos = @("conxml.exe", "conxml-cli.exe")
+foreach ($f in $archivos) {{
+    $actual = Join-Path $TargetDir $f
+    if (Test-Path $actual) {{
+        try {{
+            Copy-Item -Path $actual -Destination (Join-Path $BackupDir $f) -Force
+            Write-Log "Respaldado $f en $BackupDir"
+        }} catch {{
+            Write-Log "ADVERTENCIA: no se pudo respaldar ${f}: ${_}"
+        }}
+    }}
+}}
+
+# 3. Reemplazar binarios desde staging
+$fallo = $false
+foreach ($f in $archivos) {{
+    $origen = Join-Path $StagingDir $f
+    if (Test-Path $origen) {{
+        $destino = Join-Path $TargetDir $f
+        try {{
+            Copy-Item -Path $origen -Destination $destino -Force
+            Write-Log "Copiado $origen -> $destino"
+        }} catch {{
+            Write-Log "ERROR al copiar ${f}: ${_}"
+            $fallo = $true
+            break
+        }}
+    }}
+}}
+
+# 4. Rollback en caso de fallo al copiar
+if ($fallo) {{
+    Write-Log "Fallo en reemplazo. Restaurando respaldo (rollback)..."
+    foreach ($f in $archivos) {{
+        $bak = Join-Path $BackupDir $f
+        if (Test-Path $bak) {{
+            try {{
+                Copy-Item -Path $bak -Destination (Join-Path $TargetDir $f) -Force
+                Write-Log "Restaurado $f desde respaldo."
+            }} catch {{
+                Write-Log "ERROR crítico al restaurar ${f}: ${_}"
+            }}
+        }}
+    }}
+    $exeRestaurado = Join-Path $TargetDir "conxml.exe"
+    if (Test-Path $exeRestaurado) {{
+        Start-Process -FilePath $exeRestaurado
+        Write-Log "Relanzada versión anterior tras rollback."
+    }}
+    exit 1
+}}
+
+# 5. Relanzar el ejecutable actualizado
+$nuevoExe = Join-Path $TargetDir "conxml.exe"
+if (Test-Path $nuevoExe) {{
+    Write-Log "Lanzando nueva versión: $nuevoExe"
+    $nuevoProc = Start-Process -FilePath $nuevoExe -PassThru
+    Start-Sleep -Seconds 2
+    if ($nuevoProc.HasExited -and $nuevoProc.ExitCode -ne 0) {{
+        Write-Log "ERROR: La nueva versión falló al iniciar (código $($nuevoProc.ExitCode)). Ejecutando rollback..."
+        foreach ($f in $archivos) {{
+            $bak = Join-Path $BackupDir $f
+            if (Test-Path $bak) {{
+                Copy-Item -Path $bak -Destination (Join-Path $TargetDir $f) -Force
+            }}
+        }}
+        Start-Process -FilePath $nuevoExe
+        exit 1
+    }}
+}} else {{
+    Write-Log "ADVERTENCIA: No se encontró $nuevoExe para relanzar."
+}}
+
+# 6. Limpieza de staging
+try {{
+    Remove-Item -Path $StagingDir -Recurse -Force -ErrorAction SilentlyContinue
+}} catch {{}}
+
+Write-Log "Actualización completada exitosamente."
+"""
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    script_path.write_text(contenido, encoding="utf-8")
+    return script_path
 
 
 class Updater:
@@ -94,10 +250,24 @@ class Updater:
             version = data["tag_name"].removeprefix("v")
             if version_tuple(version) <= version_tuple(self.current):
                 return None
-            name = f"ConXml-Setup-{version}-windows-x64.exe"
-            for asset in data.get("assets", []):
-                if asset.get("name") != name or asset.get("state") != "uploaded":
-                    continue
+
+            zip_name = f"ConXml-{version}-windows-x64.zip"
+            installer_name = f"ConXml-Setup-{version}-windows-x64.exe"
+
+            assets_by_name = {
+                a.get("name"): a for a in data.get("assets", []) if a.get("state") == "uploaded"
+            }
+
+            # Prioridad 1: Paquete ZIP para actualización directa sin instalador
+            # Prioridad 2: Instalador Setup (para compatibilidad hacia atrás)
+            candidatos = []
+            if zip_name in assets_by_name:
+                candidatos.append((zip_name, "zip"))
+            if installer_name in assets_by_name:
+                candidatos.append((installer_name, "installer"))
+
+            for name, kind in candidatos:
+                asset = assets_by_name[name]
                 digest = asset.get("digest", "")
                 if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
                     continue
@@ -107,16 +277,21 @@ class Updater:
                 url = asset["browser_download_url"]
                 self._safe_url(url, asset=True)
                 if not self.demo and url != f"https://github.com/{REPOSITORY}/releases/download/v{version}/{name}":
-                    raise UpdateError("El instalador no pertenece a la versión publicada.")
-                return Release(version, url, digest[7:], size, name)
-            return None  # Una versión sin artefacto verificable no se anuncia.
+                    raise UpdateError("El artefacto no pertenece a la versión publicada.")
+                return Release(version, url, digest[7:], size, name, kind=kind)
+
+            return None
         except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError) as exc:
             raise UpdateError("No se pudo consultar la actualización. Puedes reintentar con conexión.") from exc
 
     def download(self, release: Release, progress=None) -> Path:
         self.cache.mkdir(parents=True, exist_ok=True)
-        if release.name != f"ConXml-Setup-{release.version}-windows-x64.exe":
-            raise UpdateError("Nombre de instalador inválido.")
+        valid_names = (
+            f"ConXml-{release.version}-windows-x64.zip",
+            f"ConXml-Setup-{release.version}-windows-x64.exe",
+        )
+        if release.name not in valid_names:
+            raise UpdateError("Nombre de archivo de actualización inválido.")
         version_tuple(release.version)
         fd, temporary = tempfile.mkstemp(prefix=".descarga-", dir=self.cache)
         target = self.cache / release.name
@@ -128,7 +303,7 @@ class Updater:
                 for block in response.iter_content(256 * 1024):
                     total += len(block)
                     if total > release.size or total > MAX_SIZE:
-                        raise UpdateError("El instalador excede el tamaño publicado.")
+                        raise UpdateError("El archivo excede el tamaño publicado.")
                     output.write(block)
                     digest.update(block)
                     if progress:
@@ -142,7 +317,82 @@ class Updater:
         finally:
             Path(temporary).unlink(missing_ok=True)
 
+    def apply_update(
+        self,
+        release: Release,
+        path: Path,
+        *,
+        target_dir: Path | None = None,
+        parent_pid: int | None = None,
+    ) -> Path:
+        """Extrae el paquete de actualización, valida los binarios y lanza el helper de sustitución."""
+        if path.resolve() != (self.cache / release.name).resolve():
+            raise UpdateError("Ruta del archivo de actualización inválida.")
+
+        h = hashlib.sha256()
+        with path.open("rb") as source:
+            for block in iter(lambda: source.read(1024 * 1024), b""):
+                h.update(block)
+        if path.stat().st_size != release.size or h.hexdigest() != release.sha256:
+            raise UpdateError("El archivo de actualización cambió después de descargarlo.")
+
+        if release.kind == "installer" or path.name.endswith(".exe"):
+            self.launch(release, path)
+            return path
+
+        staging_dir = self.cache / "staging" / release.version
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir, ignore_errors=True)
+        staging_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with zipfile.ZipFile(path, "r") as z:
+                z.extractall(staging_dir)
+        except (zipfile.BadZipFile, OSError) as exc:
+            raise UpdateError(f"Archivo de actualización no es un ZIP válido: {exc}") from exc
+
+        exe_staging = staging_dir / "conxml.exe"
+        if not exe_staging.is_file() or exe_staging.stat().st_size == 0:
+            raise UpdateError("El paquete descargado no contiene conxml.exe.")
+
+        if target_dir is None:
+            if getattr(sys, "frozen", False):
+                target_dir = Path(sys.executable).resolve().parent
+            else:
+                target_dir = self.cache / "installed"
+                target_dir.mkdir(parents=True, exist_ok=True)
+
+        backup_dir = self.cache / "backup"
+        log_file = Config().logs_dir / "actualizacion.log"
+        script_path = self.cache / "actualizar.ps1"
+
+        generar_script_actualizador(
+            script_path,
+            parent_pid=parent_pid or os.getpid(),
+            target_dir=target_dir,
+            staging_dir=staging_dir,
+            backup_dir=backup_dir,
+            log_file=log_file,
+        )
+
+        if sys.platform == "win32" and not self.demo and getattr(sys, "frozen", False):
+            cmd = [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy", "Bypass",
+                "-File", str(script_path),
+            ]
+            flags = 0
+            if hasattr(subprocess, "DETACHED_PROCESS"):
+                flags |= subprocess.DETACHED_PROCESS
+            if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+                flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+            subprocess.Popen(cmd, creationflags=flags, close_fds=True)
+
+        return script_path
+
     def launch(self, release: Release, path: Path):
+        """Lanza el instalador interactivo como método alternativo o de rescate."""
         if self.demo or sys.platform != "win32" or not getattr(sys, "frozen", False):
             raise UpdateError("Instalación disponible solo en ConXml empaquetado para Windows.")
         if path.resolve() != (self.cache / release.name).resolve():
@@ -153,5 +403,4 @@ class Updater:
                 h.update(block)
         if path.stat().st_size != release.size or h.hexdigest() != release.sha256:
             raise UpdateError("El instalador cambió después de descargarlo.")
-        # El asistente es interactivo y AppMutex impide sustituir la app abierta.
         subprocess.Popen([str(path)], close_fds=True)

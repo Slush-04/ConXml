@@ -20,7 +20,7 @@ SolidCompression=yes
 WizardStyle=modern
 DisableProgramGroupPage=yes
 AppMutex=ConXmlApplication
-CloseApplications=no
+CloseApplications=yes
 RestartApplications=no
 UninstallDisplayIcon={app}\conxml.exe
 [Languages]

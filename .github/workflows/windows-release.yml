@@ -34,29 +34,35 @@ jobs:
         run: ./scripts/build_installer.ps1
       - uses: actions/upload-artifact@v4
         with:
-          name: ConXml-Windows-installer
-          path: dist/installer/*
+          name: ConXml-Windows-dist
+          path: |
+            dist/installer/*
+            dist/*.zip*
           if-no-files-found: error
-      - name: Publicar solo cuando instalador y pruebas estén listos
+      - name: Publicar solo cuando instalador, paquete ZIP y pruebas estén listos
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "v$env:CONXML_RELEASE_VERSION"
           $exe = "dist/installer/ConXml-Setup-$env:CONXML_RELEASE_VERSION-windows-x64.exe"
+          $zip = "dist/ConXml-$env:CONXML_RELEASE_VERSION-windows-x64.zip"
           # Borrador durante carga: latest no anuncia archivos incompletos.
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) { throw "La versión ya existe; no sobrescribir una publicación." }
-          gh release create $tag $exe "$exe.sha256" --target '${{ github.sha }}' --draft --title "ConXml $env:CONXML_RELEASE_VERSION" --notes "Instalador Windows x64. Conserva los datos locales."
+          gh release create $tag $exe "$exe.sha256" $zip "$zip.sha256" --target '${{ github.sha }}' --draft --title "ConXml $env:CONXML_RELEASE_VERSION" --notes "Instalador y paquete de actualización directa Windows x64. Conserva los datos locales."
           if ($LASTEXITCODE -ne 0) { throw "Falló la carga de la versión." }
           # GitHub's get-by-tag endpoint does not return drafts. Find this draft
           # via the authenticated releases collection, then use its release ID.
           $releaseId = gh api "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.tag_name == `"$tag`") | .id"
           if (-not $releaseId) { throw "No se encontró el borrador de la versión." }
           $releaseId = $releaseId.Trim()
-          $asset = gh api "repos/${{ github.repository }}/releases/$releaseId" --jq '.assets[] | select(.name | endswith(".exe")) | .digest'
-          $expected = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
-          if ($asset -ne "sha256:$expected") { throw "Digest ausente o incorrecto; queda en borrador." }
+          $assetExe = gh api "repos/${{ github.repository }}/releases/$releaseId" --jq '.assets[] | select(.name | endswith(".exe")) | .digest'
+          $expectedExe = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
+          if ($assetExe -ne "sha256:$expectedExe") { throw "Digest de instalador ausente o incorrecto; queda en borrador." }
+          $assetZip = gh api "repos/${{ github.repository }}/releases/$releaseId" --jq '.assets[] | select(.name | endswith(".zip")) | .digest'
+          $expectedZip = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+          if ($assetZip -ne "sha256:$expectedZip") { throw "Digest de ZIP ausente o incorrecto; queda en borrador." }
           # La cola no garantiza orden FIFO: un build anterior tardío no debe
           # sustituir latest de una versión más nueva.
           $latest = gh api "repos/${{ github.repository }}/releases/latest" --jq .tag_name 2>$null
