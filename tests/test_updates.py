@@ -318,7 +318,7 @@ def test_apply_update_corrupt_or_missing_exe_aborts(tmp_path):
                       len(zip_bytes), zip_file.name, kind='zip')
 
     updater = Updater(cache_dir, current='0.2.0')
-    with pytest.raises(UpdateError, match='no contiene conxml.exe'):
+    with pytest.raises(UpdateError, match='archivo no permitido'):
         updater.apply_update(release, zip_file)
 
 

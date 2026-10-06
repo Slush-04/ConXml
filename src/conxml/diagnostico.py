@@ -20,6 +20,7 @@ from conxml import __version__
 from conxml.config import Config
 
 _INICIALIZADO = False
+_RUTA_LOG_CONFIGURADA: Path | None = None
 _PATRONES_SECRETOS = [
     re.compile(r"(password|contrase[ñn]a|token|secret|clave|llave|authorization)\s*[:=]\s*['\"]?([^'\"\s&]+)", re.IGNORECASE),
     re.compile(r"Bearer\s+([a-zA-Z0-9_\-\.]+)", re.IGNORECASE),
@@ -58,17 +59,26 @@ def obtener_ruta_log() -> Path:
 
 def configurar_registro() -> logging.Logger:
     """Configura el logger raíz con rotación de archivos y captura de excepciones."""
-    global _INICIALIZADO
+    global _INICIALIZADO, _RUTA_LOG_CONFIGURADA
     logger = logging.getLogger("conxml")
-    if _INICIALIZADO:
+    ruta_log = obtener_ruta_log()
+    if _INICIALIZADO and _RUTA_LOG_CONFIGURADA == ruta_log:
         return logger
+
+    # Las pruebas y los perfiles portables pueden cambiar CONXML_LOG_DIR entre
+    # ejecuciones. No conservamos handlers apuntando al expediente anterior.
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+        try:
+            handler.close()
+        except Exception:
+            pass
 
     logger.setLevel(logging.INFO)
     logger.propagate = False
     filtro = FiltroSanitizacion()
     formato = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
-    ruta_log = obtener_ruta_log()
     try:
         handler_archivo = logging.handlers.RotatingFileHandler(
             ruta_log, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
@@ -88,6 +98,7 @@ def configurar_registro() -> logging.Logger:
 
     _instalar_excepthook(logger, ruta_log)
     _INICIALIZADO = True
+    _RUTA_LOG_CONFIGURADA = ruta_log
     return logger
 
 

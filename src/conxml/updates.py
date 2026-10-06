@@ -18,6 +18,7 @@ import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from pathlib import PurePosixPath
 from urllib.parse import urlparse
 
 import requests
@@ -118,7 +119,7 @@ foreach ($f in $archivos) {{
             Copy-Item -Path $actual -Destination (Join-Path $BackupDir $f) -Force
             Write-Log "Respaldado $f en $BackupDir"
         }} catch {{
-            Write-Log "ADVERTENCIA: no se pudo respaldar ${f}: ${_}"
+            Write-Log "ADVERTENCIA: no se pudo respaldar ${{f}}: ${{_}}"
         }}
     }}
 }}
@@ -133,7 +134,7 @@ foreach ($f in $archivos) {{
             Copy-Item -Path $origen -Destination $destino -Force
             Write-Log "Copiado $origen -> $destino"
         }} catch {{
-            Write-Log "ERROR al copiar ${f}: ${_}"
+            Write-Log "ERROR al copiar ${{f}}: ${{_}}"
             $fallo = $true
             break
         }}
@@ -150,7 +151,7 @@ if ($fallo) {{
                 Copy-Item -Path $bak -Destination (Join-Path $TargetDir $f) -Force
                 Write-Log "Restaurado $f desde respaldo."
             }} catch {{
-                Write-Log "ERROR crítico al restaurar ${f}: ${_}"
+                Write-Log "ERROR crítico al restaurar ${{f}}: ${{_}}"
             }}
         }}
     }}
@@ -193,6 +194,38 @@ Write-Log "Actualización completada exitosamente."
     script_path.parent.mkdir(parents=True, exist_ok=True)
     script_path.write_text(contenido, encoding="utf-8")
     return script_path
+
+
+def _extraer_paquete_seguro(archivo: zipfile.ZipFile, destino: Path) -> None:
+    """Extrae solo los dos binarios esperados, sin rutas arbitrarias."""
+    permitidos = {"conxml.exe", "conxml-cli.exe"}
+    encontrados: set[str] = set()
+    total_descomprimido = 0
+    destino_resuelto = destino.resolve()
+
+    for info in archivo.infolist():
+        ruta = PurePosixPath(info.filename)
+        if info.is_dir():
+            continue
+        if ruta.is_absolute() or len(ruta.parts) != 1 or ruta.name not in permitidos:
+            raise UpdateError("El paquete contiene una ruta o archivo no permitido.")
+        # El bit de enlace simbólico en ZIP no debe poder escapar del staging.
+        if (info.external_attr >> 16) & 0o170000 == 0o120000:
+            raise UpdateError("El paquete no puede contener enlaces simbólicos.")
+        if info.file_size < 0 or info.file_size > MAX_SIZE:
+            raise UpdateError("Un binario del paquete excede el tamaño permitido.")
+        total_descomprimido += info.file_size
+        if total_descomprimido > MAX_SIZE:
+            raise UpdateError("El contenido descomprimido excede el tamaño permitido.")
+        objetivo = (destino / ruta.name).resolve()
+        if destino_resuelto not in objetivo.parents:
+            raise UpdateError("Ruta de extracción fuera del directorio temporal.")
+        with archivo.open(info, "r") as origen, objetivo.open("wb") as salida:
+            shutil.copyfileobj(origen, salida, length=1024 * 1024)
+        encontrados.add(ruta.name)
+
+    if "conxml.exe" not in encontrados:
+        raise UpdateError("El paquete descargado no contiene conxml.exe.")
 
 
 class Updater:
@@ -347,7 +380,9 @@ class Updater:
 
         try:
             with zipfile.ZipFile(path, "r") as z:
-                z.extractall(staging_dir)
+                _extraer_paquete_seguro(z, staging_dir)
+        except UpdateError:
+            raise
         except (zipfile.BadZipFile, OSError) as exc:
             raise UpdateError(f"Archivo de actualización no es un ZIP válido: {exc}") from exc
 
