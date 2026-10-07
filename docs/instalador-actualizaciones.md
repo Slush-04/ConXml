@@ -23,22 +23,25 @@ Cierra las versiones portables antiguas antes del primer arranque y de migrar da
 ## Publicación desde el Administrador
 
 Repositorio público verificado: `Slush-04/ConXml`, rama `main`.
-`.github/workflows/windows-release.yml` solo se ejecuta mediante
-`workflow_dispatch`; subir código a `main` no publica una versión. El Administrador
-solicita el workflow en la rama `main` y envía una versión estable `X.Y.Z`.
+`.github/workflows/windows-release.yml` compila y prueba una versión mediante
+`workflow_dispatch`, pero solo deja los resultados como artefacto privado de Actions.
+No publica una Release. El Administrador descarga y prueba ese Setup; una acción
+separada inicia `.github/workflows/windows-publish.yml` con la versión y el ID del
+build que se aprobó. Subir código a `main` tampoco publica una versión.
 
-El workflow sincroniza `__version__`, pyproject y bundle en su checkout temporal,
-ejecuta las pruebas y compila ambos ejecutables, el instalador y el ZIP de
-actualización. No hace commits de versión al repo. Cada ejecución exitosa crea
-la etiqueta `vX.Y.Z` y publica una Release con los artefactos y sus hashes SHA-256.
-Un fallo no publica una Release lista. Una versión publicada nunca se sobrescribe:
-corrige el código y solicita una versión superior. Mantén los componentes
-numéricos por debajo de 65536 para el recurso de versión de Windows.
+El workflow de compilación sincroniza `__version__`, pyproject y bundle en su
+checkout temporal, ejecuta las pruebas y compila ambos ejecutables, el instalador
+y el ZIP de actualización. No hace commits ni crea Releases. La publicación valida
+que el run elegido haya sido exitoso en `main`, comprueba ambos SHA-256 y solo
+entonces crea y publica `vX.Y.Z`. Una versión publicada nunca se sobrescribe:
+genera una versión superior. Mantén los componentes numéricos por debajo de 65536
+para el recurso de versión de Windows.
 
-GitHub Actions necesita permiso de escritura de contenidos para publicar Releases.
-El Administrador necesita permiso para iniciar Actions en este repo; el token se
-guarda solo en el almacén seguro del sistema del equipo administrador. ConXml no
-contiene credenciales y descarga artefactos de Releases públicas.
+GitHub Actions necesita permiso `contents: write` para publicar Releases y
+`actions: read` para descargar el artefacto del build. El Administrador necesita
+`Actions: read and write` para iniciar y consultar workflows, y `Contents: read`
+para consultar Releases. El token se guarda solo en el almacén seguro del sistema;
+ConXml no contiene credenciales y descarga artefactos de Releases públicas.
 
 ## Aviso y aplicación
 
@@ -155,7 +158,8 @@ esas cinco comprobaciones deben correrse en una laptop Windows con pantalla real
 - `src/conxml/config.py`: ubicación persistente, carpetas y copia de datos anteriores.
 - `installer/conxml.iss`, `scripts/build_installer.ps1`, `scripts/build_exe.ps1`:
   asistente de instalación y compilación.
-- `.github/workflows/windows-release.yml`: publicación automática tras pruebas.
+- `.github/workflows/windows-release.yml`: build privado para revisión.
+- `.github/workflows/windows-publish.yml`: publicación explícita de un build aprobado.
 - `scripts/release_version.py`, `src/conxml/__init__.py`, `pyproject.toml`,
   `conxml.spec`: versión consistente para código, paquete y bundle.
 - `scripts/demo_updates.py`, `tests/test_updates.py`, `tests/test_config_installer.py`:

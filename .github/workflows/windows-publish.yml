@@ -1,0 +1,88 @@
+name: Windows publish
+run-name: ConXml publish ${{ inputs.version }}
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versión estable X.Y.Z que se publicará'
+        required: true
+        type: string
+      build_run_id:
+        description: 'ID de la compilación Windows que ya descargaste y revisaste'
+        required: true
+        type: string
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: windows-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validar compilación elegida
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+        run: |
+          if ($BUILD_RUN_ID -notmatch '^\d+$') { throw "ID de compilación inválido." }
+          $run = gh api "repos/${{ github.repository }}/actions/runs/$BUILD_RUN_ID" | ConvertFrom-Json
+          if ($run.path -notlike '*windows-release.yml*' -or $run.event -ne 'workflow_dispatch' -or $run.head_branch -ne 'main' -or $run.status -ne 'completed' -or $run.conclusion -ne 'success') {
+            throw "El ID no corresponde a una compilación Windows exitosa de main."
+          }
+          "CONXML_BUILD_SHA=$($run.head_sha)" >> $env:GITHUB_ENV
+      - uses: actions/download-artifact@v4
+        with:
+          name: ConXml-Windows-dist
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.build_run_id }}
+          path: build-artifact
+      - name: Validar versión y hashes
+        shell: pwsh
+        env:
+          CONXML_REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          $version = $env:CONXML_REQUESTED_VERSION
+          python scripts/release_version.py $version
+          if ($LASTEXITCODE -ne 0) { throw "Versión inválida." }
+          $exe = "build-artifact/installer/ConXml-Setup-$version-windows-x64.exe"
+          $zip = "build-artifact/ConXml-$version-windows-x64.zip"
+          foreach ($file in @($exe, $zip)) {
+            $sidecar = "$file.sha256"
+            if (-not (Test-Path $file) -or -not (Test-Path $sidecar)) { throw "Falta $file o su SHA-256." }
+            $line = (Get-Content $sidecar -Raw).Trim()
+            $expected = ($line -split '\s+')[0].ToLower()
+            $actual = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLower()
+            if ($expected -notmatch '^[0-9a-f]{64}$' -or $actual -ne $expected) { throw "SHA-256 incorrecto para $file." }
+          }
+          "CONXML_RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+      - name: Publicar Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "v$env:CONXML_RELEASE_VERSION"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) { throw "La versión ya existe; no sobrescribir una publicación." }
+          $exe = "build-artifact/installer/ConXml-Setup-$env:CONXML_RELEASE_VERSION-windows-x64.exe"
+          $zip = "build-artifact/ConXml-$env:CONXML_RELEASE_VERSION-windows-x64.zip"
+          gh release create $tag $exe "$exe.sha256" $zip "$zip.sha256" --target $env:CONXML_BUILD_SHA --draft --title "ConXml $env:CONXML_RELEASE_VERSION" --notes "Instalador y paquete de actualización directa Windows x64. Conserva los datos locales."
+          if ($LASTEXITCODE -ne 0) { throw "Falló la carga de la versión." }
+          $releaseId = gh api "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.tag_name == `"$tag`\") | .id"
+          if (-not $releaseId) { throw "No se encontró el borrador de la versión." }
+          $releaseId = $releaseId.Trim()
+          $assetExe = gh api "repos/${{ github.repository }}/releases/$releaseId" --jq '.assets[] | select(.name | endswith(".exe")) | .digest'
+          $expectedExe = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
+          if ($assetExe -ne "sha256:$expectedExe") { throw "Digest de instalador ausente o incorrecto; queda en borrador." }
+          $assetZip = gh api "repos/${{ github.repository }}/releases/$releaseId" --jq '.assets[] | select(.name | endswith(".zip")) | .digest'
+          $expectedZip = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+          if ($assetZip -ne "sha256:$expectedZip") { throw "Digest de ZIP ausente o incorrecto; queda en borrador." }
+          $latest = gh api "repos/${{ github.repository }}/releases/latest" --jq .tag_name 2>$null
+          $makeLatest = 'true'
+          if ($LASTEXITCODE -eq 0 -and [version]$latest.TrimStart('v') -gt [version]$env:CONXML_RELEASE_VERSION) { $makeLatest = 'false' }
+          gh api --method PATCH "repos/${{ github.repository }}/releases/$releaseId" -F draft=false -f "make_latest=$makeLatest" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo publicar." }
