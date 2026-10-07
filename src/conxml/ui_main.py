@@ -1,6 +1,13 @@
 """Punto de entrada de la interfaz gráfica (usado por PyInstaller)."""
 
-from conxml.ui.app import main
+from conxml.startup import run_gui
 
 if __name__ == "__main__":
-    main()
+    # La importación queda dentro de la función para que también se registren
+    # fallos tempranos al cargar módulos o recursos dentro del ejecutable.
+    def _entrypoint() -> None:
+        from conxml.ui.app import main
+
+        main()
+
+    run_gui(_entrypoint)

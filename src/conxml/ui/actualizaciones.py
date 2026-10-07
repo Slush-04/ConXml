@@ -87,7 +87,7 @@ class Actualizaciones:
             self.check(manual=True)
             return
         release = self.release
-        if not messagebox.askyesno('Nueva versión', f'ConXml {release.version} disponible ({release.size / 1024**2:.1f} MB).\n¿Descargar el instalador?', parent=self.app):
+        if not messagebox.askyesno('Nueva versión', f'ConXml {release.version} disponible ({release.size / 1024**2:.1f} MB).\n¿Descargar la actualización?', parent=self.app):
             return
         self.app.ejecutar(lambda: self.updater.download(release),
                           lambda path: self._downloaded(release, path),
@@ -96,9 +96,9 @@ class Actualizaciones:
     def _downloaded(self, release, path):
         self.path = path
         if self.updater.demo or sys.platform != 'win32' or not getattr(sys, 'frozen', False):
-            messagebox.showinfo('Prueba de actualización', f'Descarga y SHA-256 comprobados:\n{path}\n\nEn desarrollo/Mac no se ejecutan instaladores Windows.', parent=self.app)
+            messagebox.showinfo('Prueba de actualización', f'Descarga y SHA-256 comprobados:\n{path}\n\nEn desarrollo/Mac no se ejecutan reemplazos de binarios Windows.', parent=self.app)
             return
-        if not messagebox.askyesno('Instalar actualización', 'Descarga comprobada. Se guardará un respaldo, se cerrará ConXml y se abrirá el asistente de instalación.\nPodrás abrir ConXml al terminar.\n¿Continuar?', parent=self.app):
+        if not messagebox.askyesno('Instalar actualización', f'Descarga comprobada. Se guardará un respaldo de tus datos y ConXml se actualizará automáticamente a la versión {release.version}.\n¿Continuar?', parent=self.app):
             return
         self.app.guardar_sesion()
         self.app.ejecutar(lambda: respaldo_automatico(Config().base),
@@ -110,8 +110,9 @@ class Actualizaciones:
             if not messagebox.askyesno('Respaldo con XML faltantes', f'{len(result.faltantes)} XML ya no están en sus rutas originales. El respaldo registra los faltantes.\n¿Continuar con la actualización?', parent=self.app):
                 return
         try:
-            self.updater.launch(release, path)
+            self.updater.apply_update(release, path)
         except (UpdateError, OSError) as exc:
             messagebox.showerror('Actualización', str(exc), parent=self.app)
             return
         self.app.master.destroy()
+        sys.exit(0)

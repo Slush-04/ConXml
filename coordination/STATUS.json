@@ -1,0 +1,6 @@
+{
+  "status": "ready_for_review",
+  "updated_at": "2026-10-06T08:00:00+00:00",
+  "updated_by": "codex",
+  "note": "Corregido el generador PowerShell, el registro por perfil y la extracción segura del ZIP. Falta validar build y actualización real en Windows."
+}
