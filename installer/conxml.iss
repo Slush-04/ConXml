@@ -26,7 +26,7 @@ UninstallDisplayIcon={app}\conxml.exe
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 [Tasks]
-Name: "desktopicon"; Description: "Crear acceso directo en el escritorio"; Flags: unchecked
+Name: "desktopicon"; Description: "Crear acceso directo en el escritorio"
 [Files]
 Source: "..\dist\conxml.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\conxml-cli.exe"; DestDir: "{app}"; Flags: ignoreversion
