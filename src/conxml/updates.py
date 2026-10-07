@@ -62,10 +62,10 @@ def generar_script_actualizador(
     """Genera el script PowerShell que reemplaza los binarios tras el cierre de ConXml."""
     contenido = f"""# Script de actualización desatendida para ConXml
 param(
-    [Parameter(Mandatory=$false)][int]$ParentPid = {parent_pid}
-    [Parameter(Mandatory=$false)][string]$TargetDir = '{str(target_dir).replace("'", "''")}'
-    [Parameter(Mandatory=$false)][string]$StagingDir = '{str(staging_dir).replace("'", "''")}'
-    [Parameter(Mandatory=$false)][string]$BackupDir = '{str(backup_dir).replace("'", "''")}'
+    [Parameter(Mandatory=$false)][int]$ParentPid = {parent_pid},
+    [Parameter(Mandatory=$false)][string]$TargetDir = '{str(target_dir).replace("'", "''")}',
+    [Parameter(Mandatory=$false)][string]$StagingDir = '{str(staging_dir).replace("'", "''")}',
+    [Parameter(Mandatory=$false)][string]$BackupDir = '{str(backup_dir).replace("'", "''")}',
     [Parameter(Mandatory=$false)][string]$LogFile = '{str(log_file).replace("'", "''")}'
 )
 $ErrorActionPreference = "Stop"

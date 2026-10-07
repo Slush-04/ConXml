@@ -71,7 +71,10 @@ def test_generated_powershell_script_uses_utf8_bom(tmp_path):
     texto = contenido.decode('utf-8-sig')
     assert 'Actualización completada exitosamente.' in texto
     parametros = texto.split('$ErrorActionPreference', 1)[0]
-    assert all(not linea.rstrip().endswith(',') for linea in parametros.splitlines()[1:-1])
+    lineas_parametros = [linea.strip() for linea in parametros.splitlines()[2:-1]]
+    assert len(lineas_parametros) == 5
+    assert all(linea.endswith(',') for linea in lineas_parametros[:-1])
+    assert not lineas_parametros[-1].endswith(',')
 
 
 @pytest.mark.parametrize('case', ['current', 'older', 'draft', 'prerelease', 'missing', 'no_digest', 'bad_digest', 'wrong_arch', 'uploading', 'bad_size'])
