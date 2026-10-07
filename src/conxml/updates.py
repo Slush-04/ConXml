@@ -192,7 +192,9 @@ try {{
 Write-Log "Actualización completada exitosamente."
 """
     script_path.parent.mkdir(parents=True, exist_ok=True)
-    script_path.write_text(contenido, encoding="utf-8")
+    # Windows PowerShell 5.1 interpreta archivos UTF-8 sin BOM como ANSI.
+    # El BOM conserva correctamente acentos en mensajes y rutas del script.
+    script_path.write_text(contenido, encoding="utf-8-sig")
     return script_path
 
 

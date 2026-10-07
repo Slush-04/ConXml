@@ -54,6 +54,23 @@ def test_real_http_check_download_and_refuse_mac_install(feed, tmp_path):
     assert sentinel.read_text() == '{"cliente":"conservar"}'
 
 
+def test_generated_powershell_script_uses_utf8_bom(tmp_path):
+    from conxml.updates import generar_script_actualizador
+
+    script = generar_script_actualizador(
+        tmp_path / 'actualizar.ps1',
+        parent_pid=0,
+        target_dir=tmp_path / 'app',
+        staging_dir=tmp_path / 'staging',
+        backup_dir=tmp_path / 'backup',
+        log_file=tmp_path / 'logs' / 'update.log',
+    )
+
+    contenido = script.read_bytes()
+    assert contenido.startswith(b'\xef\xbb\xbf')
+    assert 'Actualización completada exitosamente.' in contenido.decode('utf-8-sig')
+
+
 @pytest.mark.parametrize('case', ['current', 'older', 'draft', 'prerelease', 'missing', 'no_digest', 'bad_digest', 'wrong_arch', 'uploading', 'bad_size'])
 def test_unready_or_incompatible_release_not_announced(feed, case):
     updater, state = feed
@@ -361,7 +378,9 @@ def test_powershell_helper_execution_and_rollback(tmp_path):
     script_content = script_path.read_text(encoding='utf-8')
     script_test = script_content.replace('Start-Process -FilePath $nuevoExe -PassThru', '# Test: no start\n$nuevoProc = [pscustomobject]@{HasExited=$false; ExitCode=0}')
     script_test_path = tmp_path / 'run_test.ps1'
-    script_test_path.write_text(script_test, encoding='utf-8')
+    # PowerShell 5.1 requiere BOM para reconocer UTF-8; sin él los acentos
+    # del script se leen como ANSI y la comprobación del log falla.
+    script_test_path.write_text(script_test, encoding='utf-8-sig')
 
     res = subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script_test_path)],
                          capture_output=True, text=True, timeout=15)

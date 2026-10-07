@@ -282,8 +282,13 @@ def test_columnas_compartido_con_acciones_y_sin_anadir(tmp_path, monkeypatch):
         assert pantalla._barra_tabla.winfo_manager() == "grid"
         assert set(pantalla._filtros) == {"uuid", "rfc", "serie", "folio"}
         assert pantalla._btn_columnas.winfo_parent() == str(pantalla._marco_acciones)
-        assert pantalla._fila_carpeta._btn_secundario is None
-        assert pantalla._fila_carpeta._btn_principal.winfo_manager() != ""
+        # En Admin 4.0 esta fila es un CTkFrame informativo (no un FilaArchivo
+        # con botones); comprobar su contenido sin depender de atributos
+        # internos de otro tipo de widget.
+        hijos_fila_carpeta = pantalla._fila_carpeta.winfo_children()
+        assert len(hijos_fila_carpeta) == 1
+        assert hijos_fila_carpeta[0].cget("text").startswith("Selecciona primero")
+        assert pantalla._btn_leer.winfo_manager() != ""
         assert pantalla._btn_columnas.winfo_height() <= 32
         assert pantalla._btn_validar.winfo_height() <= 34
         assert pantalla._btn_exportar.winfo_height() <= 34
