@@ -68,7 +68,10 @@ def test_generated_powershell_script_uses_utf8_bom(tmp_path):
 
     contenido = script.read_bytes()
     assert contenido.startswith(b'\xef\xbb\xbf')
-    assert 'Actualización completada exitosamente.' in contenido.decode('utf-8-sig')
+    texto = contenido.decode('utf-8-sig')
+    assert 'Actualización completada exitosamente.' in texto
+    parametros = texto.split('$ErrorActionPreference', 1)[0]
+    assert all(not linea.rstrip().endswith(',') for linea in parametros.splitlines()[1:-1])
 
 
 @pytest.mark.parametrize('case', ['current', 'older', 'draft', 'prerelease', 'missing', 'no_digest', 'bad_digest', 'wrong_arch', 'uploading', 'bad_size'])
@@ -375,7 +378,8 @@ def test_powershell_helper_execution_and_rollback(tmp_path):
 
     # 1. Ejecutar helper en modo normal (sin relanzar proceso GUI inexistente para evitar popup de ejecutable no válido)
     # Reemplazamos la sección de Start-Process con un log para la prueba de script
-    script_content = script_path.read_text(encoding='utf-8')
+    # Quitar el BOM al leer antes de guardar el script de prueba con un único BOM.
+    script_content = script_path.read_text(encoding='utf-8-sig')
     script_test = script_content.replace('Start-Process -FilePath $nuevoExe -PassThru', '# Test: no start\n$nuevoProc = [pscustomobject]@{HasExited=$false; ExitCode=0}')
     script_test_path = tmp_path / 'run_test.ps1'
     # PowerShell 5.1 requiere BOM para reconocer UTF-8; sin él los acentos
