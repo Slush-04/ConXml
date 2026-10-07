@@ -10,7 +10,7 @@ from pathlib import Path
 from tkinter import messagebox, scrolledtext
 
 import customtkinter as ctk
-from PIL import Image
+from PIL import Image, ImageTk
 
 from conxml.boveda import inicializar_boveda
 from conxml.catalog.db import Catalogo
@@ -167,10 +167,12 @@ class ConXmlApp(ctk.CTkFrame):
         if ruta_logo is not None:
             try:
                 imagen_logo = Image.open(ruta_logo)
-                self._logo_lateral = ctk.CTkImage(
-                    light_image=imagen_logo,
-                    dark_image=imagen_logo,
-                    size=(22, 22),
+                # PhotoImage must belong to this Tk interpreter. CTkImage
+                # creates it lazily through the default interpreter, which
+                # breaks smoke tests that create and destroy multiple roots.
+                self._logo_lateral = ImageTk.PhotoImage(
+                    imagen_logo.resize((22, 22), Image.Resampling.LANCZOS),
+                    master=self._cabecera_lateral,
                 )
             except Exception:
                 self._logo_lateral = None
