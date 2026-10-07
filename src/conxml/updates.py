@@ -163,7 +163,8 @@ class Updater:
             "$ErrorActionPreference = 'SilentlyContinue'\n"
             f"$installer = '{installer}'\n"
             f"try {{ Wait-Process -Id {os.getpid()} -ErrorAction Stop }} catch {{ }}\n"
-            "Start-Process -FilePath $installer\n"
+            "Start-Process -FilePath $installer -Wait\n"
+            "Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue\n"
             "Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue\n",
             encoding="utf-8",
         )
