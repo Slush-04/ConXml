@@ -153,5 +153,26 @@ class Updater:
                 h.update(block)
         if path.stat().st_size != release.size or h.hexdigest() != release.sha256:
             raise UpdateError("El instalador cambió después de descargarlo.")
-        # El asistente es interactivo y AppMutex impide sustituir la app abierta.
-        subprocess.Popen([str(path)], close_fds=True)
+        # AppMutex impide sustituir la aplicación mientras este proceso sigue
+        # vivo. Un proceso auxiliar espera a que ConXml termine y solo después
+        # abre Setup; así el Run de Inno Setup no intenta lanzar la nueva app
+        # mientras el mutex de la versión anterior aún existe.
+        helper = self.cache / f".instalar-despues-{os.getpid()}.ps1"
+        installer = str(path).replace("'", "''")
+        helper.write_text(
+            "$ErrorActionPreference = 'SilentlyContinue'\n"
+            f"$installer = '{installer}'\n"
+            f"try {{ Wait-Process -Id {os.getpid()} -ErrorAction Stop }} catch {{ }}\n"
+            "Start-Process -FilePath $installer\n"
+            "Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue\n",
+            encoding="utf-8",
+        )
+        detached = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+        no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        subprocess.Popen(
+            ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
+             "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
+             "-File", str(helper)],
+            close_fds=True,
+            creationflags=detached | no_window,
+        )

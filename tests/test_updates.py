@@ -194,7 +194,11 @@ def test_windows_launch_rechecks_file_and_uses_interactive_setup(feed, monkeypat
     launches = []
     monkeypatch.setattr('conxml.updates.subprocess.Popen', lambda args, **kw: launches.append(args))
     updater.launch(release, path)
-    assert launches == [[str(path)]]  # Sin parámetros de instalación silenciosa.
+    assert launches and launches[0][0] == 'powershell.exe'
+    script_path = Path(launches[0][launches[0].index('-File') + 1])
+    script = script_path.read_text(encoding='utf-8')
+    assert f'Wait-Process -Id {os.getpid()}' in script
+    assert str(path).replace("'", "''") in script
     path.write_bytes(b'alterado')
     with pytest.raises(UpdateError, match='cambió'):
         updater.launch(release, path)
