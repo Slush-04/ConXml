@@ -183,7 +183,7 @@ class ConXmlApp(ctk.CTkFrame):
             except Exception:
                 self._logo_lateral = None
         self._marca_lateral = ctk.CTkLabel(
-            self._cabecera_lateral, text="CONXML", image=self._logo_lateral,
+            self._cabecera_lateral, text=" CONXML", image=self._logo_lateral,
             compound="left", padx=0,
             text_color=th.SIDEBAR_TEXTO_ACTIVO,
             font=(th.FUENTE, 18, "bold"),
