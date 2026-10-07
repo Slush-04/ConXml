@@ -1,9 +1,12 @@
 name: Windows release
+run-name: ConXml release ${{ inputs.version }}
 on:
-  push:
-    branches: [main] # Rama de distribución; cambiar aquí si se usa otra.
-    paths: ['src/**', 'scripts/**', 'installer/**', 'tests/**', 'pyproject.toml', 'conxml.spec', '.github/workflows/windows-release.yml']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versión estable X.Y.Z que publicará el Administrador'
+        required: true
+        type: string
 permissions:
   contents: write
 concurrency:
@@ -20,9 +23,10 @@ jobs:
           architecture: x64
       - name: Versionar build sin commits de metadatos
         shell: pwsh
+        env:
+          CONXML_REQUESTED_VERSION: ${{ inputs.version }}
         run: |
-          # Cada ejecución incrementa run_number; reintentos no crean otra versión.
-          $version = "0.2.${{ github.run_number }}"
+          $version = $env:CONXML_REQUESTED_VERSION
           python scripts/release_version.py $version
           if ($LASTEXITCODE -ne 0) { throw "Versión inválida" }
           "CONXML_RELEASE_VERSION=$version" >> $env:GITHUB_ENV

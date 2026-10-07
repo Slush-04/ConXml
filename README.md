@@ -248,9 +248,15 @@ Este proyecto es de uso privado para gestión contable. Consulta la información
 ### Instalador Windows y actualizaciones
 
 El proceso de distribución genera un único `ConXml-Setup-X.Y.Z-windows-x64.exe`.
-Los cambios de código en `main` construyen, prueban y publican una Release mediante
-GitHub Actions. La app muestra **⬇** cuando existe un instalador nuevo verificable;
-la descarga y la instalación requieren acción del usuario. Los datos persisten en
-`%LOCALAPPDATA%\ConXml\data`.
+El Administrador solicita a GitHub Actions la compilación de una versión concreta;
+el workflow compila en Windows, prueba y publica una Release. Subir cambios al repo
+no publica por sí solo una versión. La app muestra **⬇** cuando existe una Release
+nueva verificable; la descarga y la instalación requieren acción del usuario. Los
+datos persisten en `%LOCALAPPDATA%\ConXml\data`.
 
-Consulta [construcción, publicación y pruebas locales en Mac](docs/instalador-actualizaciones.md).
+Este repo conserva el código fuente y los scripts para crear builds locales de Mac
+o Windows. El Administrador y su token viven en el repo separado
+`ConXml-UpdateManager`.
+
+Consulta [construcción, publicación y pruebas locales en Mac](docs/instalador-actualizaciones.md)
+y el [contrato entre el Administrador y este repo](docs/flujo-administrador.md).

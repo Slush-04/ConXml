@@ -20,31 +20,25 @@ mediante `CONXML_DATA_DIR`, o restaurar un respaldo desde Ajustes en la nueva
 instalación. No borres el original: algunos XML pueden tener rutas absolutas a él.
 Cierra las versiones portables antiguas antes del primer arranque y de migrar datos.
 
-## Publicación automática
+## Publicación desde el Administrador
 
 Repositorio público verificado: `Slush-04/ConXml`, rama `main`.
-`.github/workflows/windows-release.yml` construye en Windows en cada push de
-código, scripts, instalador, pruebas o configuración a **main**, y también permite
-`workflow_dispatch`. Cambia `branches: [main]` para otra rama de distribución.
-Cambios solo de documentación no generan otra versión.
+`.github/workflows/windows-release.yml` solo se ejecuta mediante
+`workflow_dispatch`; subir código a `main` no publica una versión. El Administrador
+solicita el workflow en la rama `main` y envía una versión estable `X.Y.Z`.
 
-El workflow produce `0.2.<github.run_number>` en el checkout de CI, sincroniza
-`__version__`, pyproject y bundle, ejecuta las pruebas y compila ambos ejecutables
-y el instalador. No hace commits de versión al repo: no hay bucles. `run_number`
-es creciente para este workflow; un reintento conserva su número. Conserva este
-archivo/workflow para no reiniciar la numeración; al cambiar de serie, incrementa
-`0.2` tanto aquí como en el script local. Cada build exitoso crea una etiqueta
-`vX.Y.Z` y una Release en borrador, carga el instalador y su `.sha256`, verifica
-el digest de GitHub y finalmente publica. Un fallo queda sin publicar o en borrador.
-Una versión publicada nunca se sobrescribe: corrige el código y produce otro build.
-No elimines publicaciones para reutilizar sus números. Mantén los componentes
-numéricos de versión por debajo de 65536 para el recurso de versión de Windows.
+El workflow sincroniza `__version__`, pyproject y bundle en su checkout temporal,
+ejecuta las pruebas y compila ambos ejecutables, el instalador y el ZIP de
+actualización. No hace commits de versión al repo. Cada ejecución exitosa crea
+la etiqueta `vX.Y.Z` y publica una Release con los artefactos y sus hashes SHA-256.
+Un fallo no publica una Release lista. Una versión publicada nunca se sobrescribe:
+corrige el código y solicita una versión superior. Mantén los componentes
+numéricos por debajo de 65536 para el recurso de versión de Windows.
 
-Para activar: llevar estos archivos al repositorio indicado y habilitar GitHub
-Actions con permiso de escritura de contenidos. No se publicó ningún archivo
-externamente desde este trabajo. El token efímero de Actions es el único token
-usado por CI; la app no contiene credenciales y necesita Releases públicas.
-Releases de otro repo requieren cambiar `REPOSITORY` en `src/conxml/updates.py`.
+GitHub Actions necesita permiso de escritura de contenidos para publicar Releases.
+El Administrador necesita permiso para iniciar Actions en este repo; el token se
+guarda solo en el almacén seguro del sistema del equipo administrador. ConXml no
+contiene credenciales y descarga artefactos de Releases públicas.
 
 ## Aviso y aplicación
 
@@ -72,10 +66,11 @@ publicar instalador y digest. Esta entrega no incluye Authenticode ni una clave
 de firma; Windows puede mostrar el editor como desconocido. Una firma de editor
 requiere certificado y custodia de secretos en CI, nunca en el código.
 
-## Compilar en Windows
+## Compilar localmente en Windows
 
 Instala Python 3.13 **x64** e Inno Setup **6.3 o posterior** en el equipo de build.
-En PowerShell desde la raíz:
+Esta compilación sirve para pruebas locales; no publica ni actualiza Releases.
+En PowerShell desde la raíz, elige una versión local que no confundas con producción:
 
 ```powershell
 # Para un build manual nuevo (elige una versión superior a la distribuida):
