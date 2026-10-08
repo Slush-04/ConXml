@@ -28,7 +28,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BUILD_RUN_ID: ${{ inputs.build_run_id }}
         run: |
+          $BUILD_RUN_ID = $env:BUILD_RUN_ID
           if ($BUILD_RUN_ID -notmatch '^\d+$') { throw "ID de compilación inválido." }
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo consultar la compilación elegida." }
           $run = gh api "repos/${{ github.repository }}/actions/runs/$BUILD_RUN_ID" | ConvertFrom-Json
           if ($run.path -notlike '*windows-release.yml*' -or $run.event -ne 'workflow_dispatch' -or $run.head_branch -ne 'main' -or $run.status -ne 'completed' -or $run.conclusion -ne 'success') {
             throw "El ID no corresponde a una compilación Windows exitosa de main."
