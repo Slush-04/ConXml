@@ -737,15 +737,21 @@ class ConXmlApp(ctk.CTkFrame):
                     pantalla = self._pantalla_actual
                     if pantalla is not None and hasattr(pantalla, "on_progreso"):
                         pantalla.on_progreso(item[1], item[2])
+                    actualizaciones = getattr(self, "actualizaciones", None)
+                    if actualizaciones is not None:
+                        actualizaciones.on_progreso(item[1], item[2])
                 elif tipo == "error":
                     self._terminar_operacion()
+                    actualizaciones = getattr(self, "actualizaciones", None)
+                    atendido = actualizaciones.operacion_error(item[1]) if actualizaciones is not None else False
                     self.registro("ERROR:")
                     for linea in item[1].rstrip().splitlines():
                         self.registro(f"  {linea}")
-                    messagebox.showerror(
-                        "Error", "Falló la operación. Revisa el detalle en el registro.",
-                        parent=self,
-                    )
+                    if not atendido:
+                        messagebox.showerror(
+                            "Error", "Falló la operación. Revisa el detalle en el registro.",
+                            parent=self,
+                        )
                 elif tipo == "listo":
                     self._terminar_operacion()
                     _, al_terminar, resultado = item

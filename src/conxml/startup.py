@@ -48,7 +48,7 @@ def run_gui(entrypoint) -> None:
     """Ejecuta la GUI y muestra/loguea excepciones no controladas."""
     try:
         entrypoint()
-    except BaseException as exc:
+    except Exception as exc:
         path = write_startup_error(exc)
         try:
             messagebox.showerror(
