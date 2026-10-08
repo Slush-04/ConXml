@@ -408,6 +408,10 @@ def test_tabla_altura_minima_y_botones_visibles(tmp_path, monkeypatch, size, mod
 def test_selector_vistas_rep_no_empuja_columnas(tmp_path, monkeypatch):
     raiz, app = _crear_app(tmp_path, monkeypatch)
     try:
+        # Give the controls a real, stable parent width; a fresh Tk root can
+        # otherwise report its initial 1-pixel geometry on Windows runners.
+        raiz.geometry("900x700")
+        raiz.update()
         app.navegar("pagos")
         raiz.update_idletasks()
         pantalla = app._pantallas["pagos"]
