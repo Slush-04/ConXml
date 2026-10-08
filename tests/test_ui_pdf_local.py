@@ -56,7 +56,7 @@ def test_pdf_lote_respeta_vista_y_seleccion(app, tmp_path, monkeypatch):
 
 def test_sesion_recupera_cliente_pantalla_filtros_y_opciones(app, tmp_path):
     app.navegar('admin40')
-    app._pantallas['ajustes']._limpiar_al_leer.set(False)
+    app._pantallas['admin40']._filtros['rfc'].insert(0, 'EKU')
     assert not app._pantallas['ajustes'].limpiar_al_leer.get()
     app.guardar_sesion()
     datos = estado_local.cargar()
