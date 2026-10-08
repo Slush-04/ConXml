@@ -65,9 +65,13 @@ def test_resumen_vacio_con_metricas_y_accion(interfaz):
     assert pantalla._estado.winfo_children()
 
 
-def test_barra_refluye_y_conserva_controles(interfaz):
-    from conxml.ui.widgets import BarraAdaptable, BotonSecundario
+def test_barra_refluye_y_conserva_controles(interfaz, monkeypatch):
+    import conxml.ui.widgets as widgets
+    BarraAdaptable, BotonSecundario = widgets.BarraAdaptable, widgets.BotonSecundario
     root, app = interfaz
+    # This test checks the packing algorithm in logical units; platform DPI
+    # scaling is covered by the responsive window tests.
+    monkeypatch.setattr(widgets.resp, "escalado_widget", lambda *_args, **_kwargs: 1.0)
     barra = BarraAdaptable(root, width=500)
     barra.place(x=0, y=0)
     botones = [barra.agregar(BotonSecundario(barra, str(i))) for i in range(4)]
