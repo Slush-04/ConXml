@@ -78,12 +78,18 @@ def test_barra_refluye_y_conserva_controles(interfaz, monkeypatch):
     root.update_idletasks()
     assert len({b.winfo_y() for b in botones}) == 1
     barra.configure(width=260)
-    # Test the layout calculation directly: synthetic Configure events are
-    # dispatched inconsistently by Tk on Windows CI.
+    # Feed logical sizes directly: Windows CI's Tk reports a different
+    # requested width than the value passed to CTkButton.
+    monkeypatch.setattr(barra, "winfo_width", lambda: 260)
+    for boton in botones:
+        monkeypatch.setattr(boton, "winfo_reqwidth", lambda: 112)
+        monkeypatch.setattr(boton, "winfo_reqheight", lambda: 32)
     barra._acomodar()
     root.update_idletasks()
-    assert len({b.winfo_y() for b in botones}) == 2, (barra.winfo_width(), [(b.winfo_reqwidth(), b.winfo_width(), b.winfo_x(), b.winfo_y()) for b in botones], barra._distribucion)
-    assert all(b.winfo_y() + b.winfo_height() <= barra.winfo_height() for b in botones)
+    posiciones, alto = barra._distribucion
+    assert len({y for _x, y in posiciones}) == 2, (barra._distribucion, posiciones)
+    assert alto == 72
+    assert all(y + 32 <= alto for _x, y in posiciones)
 
 
 def test_calendarios_sat_seleccionan_fechas_independientes(interfaz):
