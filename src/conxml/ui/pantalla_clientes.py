@@ -9,7 +9,7 @@ import customtkinter as ctk
 from conxml.catalog.db import Catalogo
 from conxml.config import Config
 from conxml.ui import theme as th
-from conxml.ui.widgets import BotonPrimario, BotonSecundario, Encabezado, PanelCard
+from conxml.ui.widgets import BotonPrimario, BotonSecundario, Encabezado, PanelCard, BarraAdaptable
 
 
 class PantallaClientes(ctk.CTkFrame):
@@ -36,23 +36,24 @@ class PantallaClientes(ctk.CTkFrame):
         card = PanelCard(contenedor)
         card.grid(row=1, column=0, sticky="ew", pady=(20, 12))
         card.columnconfigure(1, weight=1)
+        ctk.CTkLabel(card, text="Datos del cliente", font=(th.FUENTE, th.TAM_H3, "bold")).grid(row=0, column=0, columnspan=3, sticky="w", padx=16, pady=(12, 4))
         ctk.CTkLabel(card, text="Clave", text_color=th.TEXTO, font=(th.FUENTE, th.TAM_BODY)).grid(
-            row=0, column=0, padx=(16, 10), pady=10, sticky="w"
-        )
-        self._clave = ctk.CTkEntry(card, placeholder_text="Ej. CLIENTE-01")
-        self._clave.grid(row=0, column=1, padx=8, pady=10, sticky="ew")
-        ctk.CTkLabel(card, text="Nombre", text_color=th.TEXTO, font=(th.FUENTE, th.TAM_BODY)).grid(
             row=1, column=0, padx=(16, 10), pady=10, sticky="w"
         )
-        self._nombre = ctk.CTkEntry(card, placeholder_text="Nombre visible del cliente")
-        self._nombre.grid(row=1, column=1, padx=8, pady=10, sticky="ew")
-        ctk.CTkLabel(card, text="RFC", text_color=th.TEXTO, font=(th.FUENTE, th.TAM_BODY)).grid(
+        self._clave = ctk.CTkEntry(card, placeholder_text="Ej. CLIENTE-01")
+        self._clave.grid(row=1, column=1, padx=8, pady=10, sticky="ew")
+        ctk.CTkLabel(card, text="Nombre", text_color=th.TEXTO, font=(th.FUENTE, th.TAM_BODY)).grid(
             row=2, column=0, padx=(16, 10), pady=10, sticky="w"
         )
+        self._nombre = ctk.CTkEntry(card, placeholder_text="Nombre visible del cliente")
+        self._nombre.grid(row=2, column=1, padx=8, pady=10, sticky="ew")
+        ctk.CTkLabel(card, text="RFC", text_color=th.TEXTO, font=(th.FUENTE, th.TAM_BODY)).grid(
+            row=3, column=0, padx=(16, 10), pady=10, sticky="w"
+        )
         self._rfc = ctk.CTkEntry(card, placeholder_text="Opcional, ayuda a separar emitidos y recibidos")
-        self._rfc.grid(row=2, column=1, padx=8, pady=10, sticky="ew")
+        self._rfc.grid(row=3, column=1, padx=8, pady=10, sticky="ew")
         acciones = ctk.CTkFrame(card, fg_color="transparent")
-        acciones.grid(row=0, column=2, rowspan=3, padx=16, pady=10, sticky="ns")
+        acciones.grid(row=1, column=2, rowspan=3, padx=16, pady=10, sticky="ns")
         self._btn_guardar = BotonPrimario(acciones, "Guardar cliente", self._guardar)
         self._btn_guardar.pack(fill="x", pady=(0, 8))
         BotonSecundario(acciones, "Nuevo", self._nuevo).pack(fill="x")
@@ -63,9 +64,9 @@ class PantallaClientes(ctk.CTkFrame):
         card_lista.columnconfigure(0, weight=1)
         cabecera = ctk.CTkFrame(card_lista, fg_color="transparent")
         cabecera.grid(row=0, column=0, sticky="ew", padx=16, pady=(12, 8))
-        cabecera.columnconfigure(1, weight=1)
+        cabecera.columnconfigure(0, weight=1)
         ctk.CTkLabel(
-            cabecera, text="CLIENTES REGISTRADOS", text_color=th.TEXTO_SECUNDARIO,
+            cabecera, text="Clientes registrados", text_color=th.TEXTO_SECUNDARIO,
             font=(th.FUENTE, th.TAM_NOTA, "bold"),
         ).grid(row=0, column=0, sticky="w")
         self._entrada_busqueda = ctk.CTkEntry(
@@ -74,22 +75,25 @@ class PantallaClientes(ctk.CTkFrame):
             placeholder_text="Buscar por clave, nombre o RFC",
             width=230,
         )
-        self._entrada_busqueda.grid(row=0, column=1, sticky="ew", padx=(20, 12))
+        self._entrada_busqueda.grid(row=1, column=0, sticky="ew", columnspan=3, pady=(8, 0))
         self._busqueda.trace_add("write", lambda *_args: self._renderizar_tabla())
         self._lbl_conteo = ctk.CTkLabel(
             cabecera, text="0 clientes", text_color=th.TEXTO_SECUNDARIO,
             font=(th.FUENTE, th.TAM_NOTA),
         )
-        self._lbl_conteo.grid(row=0, column=2, sticky="e", padx=(0, 12))
-        BotonPrimario(cabecera, "Entrar al cliente", self._entrar).grid(row=0, column=4, sticky="e")
-        BotonSecundario(cabecera, "Editar seleccionado", self._editar).grid(row=0, column=3, sticky="e", padx=(0, 8))
+        self._lbl_conteo.grid(row=0, column=1, sticky="e", padx=(8, 0))
+        botones_lista = BarraAdaptable(card_lista)
+        botones_lista.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 12))
+        botones_lista.agregar(BotonPrimario(botones_lista, "Entrar al cliente", self._entrar))
+        botones_lista.agregar(BotonSecundario(botones_lista, "Editar seleccionado", self._editar))
 
         marco_tabla = ctk.CTkFrame(card_lista, fg_color="transparent")
         marco_tabla.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 16))
         marco_tabla.rowconfigure(0, weight=1)
         marco_tabla.columnconfigure(0, weight=1)
         self._tabla = ttk.Treeview(
-            marco_tabla, columns=("clave", "nombre", "rfc"), show="headings", selectmode="browse",
+            marco_tabla, columns=("clave", "nombre", "rfc"), show="headings",
+            selectmode="browse", style="Clientes.Treeview",
         )
         for clave, titulo, ancho in (("clave", "Clave", 150), ("nombre", "Nombre", 280), ("rfc", "RFC", 150)):
             self._tabla.heading(clave, text=titulo)
@@ -99,6 +103,9 @@ class PantallaClientes(ctk.CTkFrame):
         scroll.grid(row=0, column=1, sticky="ns")
         self._tabla.configure(yscrollcommand=scroll.set)
         self._tabla.bind("<Double-1>", lambda _event: self._entrar())
+        self._vacio = ctk.CTkLabel(marco_tabla, text="Aún no hay clientes. Registra el primero arriba.",
+                                   text_color=th.TEXTO_SECUNDARIO, fg_color=th.FONDO_TARJETA)
+        self._vacio.place(relx=.5, rely=.5, anchor="center")
 
     def aplicar_modo_compacto(self, ancho_compacto: bool, alto_compacto: bool) -> None:
         self._contenedor.pack_configure(padx=12 if (ancho_compacto or alto_compacto) else 32,
@@ -130,6 +137,11 @@ class PantallaClientes(ctk.CTkFrame):
                 "", "end", iid=cliente["clave"],
                 values=(cliente["clave"], cliente["nombre"], cliente["rfc"]),
             )
+        if visibles:
+            self._vacio.place_forget()
+        else:
+            self._vacio.configure(text="No hay clientes que coincidan con la búsqueda." if termino else "Aún no hay clientes. Registra el primero arriba.")
+            self._vacio.place(relx=.5, rely=.5, anchor="center")
         self._lbl_conteo.configure(
             text=f"{len(visibles)} de {len(self._clientes)} clientes"
             if termino else f"{len(self._clientes)} clientes"

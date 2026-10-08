@@ -1,4 +1,5 @@
 """Control compacto de actualización. Todo Tk se ejecuta en el hilo principal."""
+import tkinter as tk
 import queue
 import sys
 import threading
@@ -28,20 +29,20 @@ class Actualizaciones:
         self.progress_window = None
         self.progress_bar = None
         self.progress_label = None
-        self.button = ctk.CTkButton(app, text='↻', width=32, height=28,
-                                   fg_color=th.FONDO_ENTRADA, text_color=th.TEXTO,
+        self.button = ctk.CTkButton(app._marco_bd, text='↻ Versión', width=112, height=28,
+                                   fg_color=th.SIDEBAR_HOVER, hover_color=th.PRIMARIO_HOVER, text_color=th.SIDEBAR_TEXTO_ACTIVO,
                                    command=self.click)
-        self.button.place(relx=1, x=-16, y=8, anchor='ne')
+        self.button.pack(fill='x', pady=(12, 0))
         self.tooltip = ctk.CTkLabel(app, text='Buscar actualización', fg_color=th.FONDO_ENTRADA)
         self.button.bind('<Enter>', self._show_tip)
         self.button.bind('<Leave>', lambda _: self.tooltip.place_forget())
-        self.app.bind('<Destroy>', self._destroy, add='+')
+        tk.Misc.bind(self.app, '<Destroy>', self._destroy, add='+')
         self.poll = app.after(100, self._poll)
         self.timer = app.after(2000, self.check)
 
     def _show_tip(self, _):
         self.tooltip.configure(text=f'Descargar ConXml {self.release.version}' if self.release else f'ConXml {__version__}: buscar actualización')
-        self.tooltip.place(relx=1, x=-16, y=40, anchor='ne')
+        self.tooltip.place(x=self.app.ancho_sidebar + 8, rely=1, y=-16, anchor='sw')
 
     def _destroy(self, event):
         if event.widget is self.app:
@@ -73,9 +74,9 @@ class Actualizaciones:
                     messagebox.showinfo('Actualizaciones', error, parent=self.app)
             else:
                 self.release = release
-                self.button.configure(text='⬇' if release else '↻')
+                self.button.configure(text='↓ Actualizar' if release else '↻ Versión')
                 if release:
-                    self.app.registro(f'ConXml {release.version} disponible. Pulsa ⬇ para descargar.')
+                    self.app.registro(f'ConXml {release.version} disponible. Pulsa Actualizar en el menú lateral para descargar.')
                 elif manual:
                     messagebox.showinfo('Actualizaciones', 'No hay una versión compatible más reciente con instalador verificable.', parent=self.app)
             if self.timer:

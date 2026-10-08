@@ -188,7 +188,7 @@ try:
         root.update()
         time.sleep(.02)
     assert controller.release is not None
-    assert controller.button.cget('text') == '⬇'
+    assert controller.button.cget('text') == '↓ Actualizar'
     dialogs = []
     actualizaciones.messagebox.askyesno = lambda *args, **kw: True
     actualizaciones.messagebox.showinfo = lambda *args, **kw: dialogs.append(args)

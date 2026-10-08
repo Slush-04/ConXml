@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tkinter as tk
 import customtkinter as ctk
 
 from conxml.catalog.db import Catalogo
@@ -12,15 +13,16 @@ from conxml.ui.widgets import (
     Encabezado,
     Insignia,
     Metrica,
-    PanelCard,
     TarjetaAccion,
+    ajustar_ancho_disponible,
+    texto_adaptable,
 )
 
 ACCIONES = [
     ("boveda", "Bóveda de XML",
      "Guarda XML en carpetas ordenadas por tipo, año y mes, y carga solo la selección que necesitas."),
     ("admin40", "Administración de XML 4.0",
-     "Lee los XML de una carpeta, previsualiza su información, valida estatus SAT "
+     "Consulta los XML cargados, previsualiza su información, valida estatus SAT "
      "y exporta el listado completo a Excel."),
     ("pagos", "Control y conciliación de pagos",
      "Lee los complementos de pago (REP), valida su estatus ante el SAT "
@@ -34,19 +36,20 @@ class PantallaResumen(ctk.CTkFrame):
         self.app = app
         self.botones: list = []
 
-        self._contenedor = ctk.CTkFrame(self, fg_color="transparent")
+        self._contenedor = ctk.CTkScrollableFrame(self, fg_color="transparent")
         self._contenedor.pack(fill="both", expand=True, padx=32, pady=24)
+        ajustar_ancho_disponible(self._contenedor, self)
         self._contenedor.columnconfigure(0, weight=1)
 
         self._encabezado = Encabezado(
             self._contenedor,
-            "ConXml — Catálogo de comprobantes",
+            "Resumen del catálogo",
             "Importa los XML de tus clientes, valida su estatus ante el SAT y genera los reportes Excel.",
         )
         self._encabezado.pack(anchor="w", fill="x")
 
         ctk.CTkLabel(
-            self._contenedor, text="RESUMEN DEL CATÁLOGO",
+            self._contenedor, text="Tu catálogo, de un vistazo",
             text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA, "bold"),
         ).pack(anchor="w", pady=(20, 8))
 
@@ -54,26 +57,19 @@ class PantallaResumen(ctk.CTkFrame):
         self._metricas.pack(fill="x")
 
         ctk.CTkLabel(
-            self._contenedor, text="¿QUÉ QUIERES HACER?",
+            self._contenedor, text="Accesos rápidos",
             text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA, "bold"),
         ).pack(anchor="w", pady=(24, 8))
 
         self._acciones = ctk.CTkFrame(self._contenedor, fg_color="transparent")
         self._acciones.pack(fill="x")
 
+        self._tarjetas_accion = []
         for i, (clave, titulo, descripcion) in enumerate(ACCIONES):
-            self._acciones.columnconfigure(i % 2, weight=1, uniform="acciones")
-            TarjetaAccion(
-                self._acciones,
-                titulo=titulo,
-                descripcion=descripcion,
-                numero=str(i + 1),
-                comando=lambda c=clave: self.app.navegar(c),
-                wraplength=380,
-            ).grid(
-                row=i // 2, column=i % 2, sticky="nsew",
-                padx=(0, 12 if i % 2 == 0 else 0), pady=(0, 12),
-            )
+            tarjeta = TarjetaAccion(self._acciones, titulo=titulo, descripcion=descripcion,
+                                   numero=f"0{i + 1}", comando=lambda c=clave: self.app.navegar(c))
+            self._tarjetas_accion.append(tarjeta)
+        tk.Misc.bind(self._acciones, "<Configure>", self._distribuir_acciones, add="+")
 
         self._estado = ctk.CTkFrame(self._contenedor, fg_color="transparent")
         self._estado.pack(fill="x", pady=(20, 0))
@@ -123,39 +119,41 @@ class PantallaResumen(ctk.CTkFrame):
         for col in range(4):
             fila.columnconfigure(col, weight=1, uniform="metricas")
 
-        if total:
-            Metrica(fila, "Comprobantes", str(total), tono="azul").grid(
-                row=0, column=0, sticky="nsew", padx=(0, 12)
-            )
-            Metrica(fila, "Vigentes", str(est["Vigente"]), tono="verde").grid(
-                row=0, column=1, sticky="nsew", padx=(0, 12)
-            )
-            Metrica(fila, "Cancelados", str(est["Cancelado"]), tono="rojo").grid(
-                row=0, column=2, sticky="nsew", padx=(0, 12)
-            )
-            Metrica(fila, "Sin validar", str(est["Sin validar"]), tono="ambar").grid(
-                row=0, column=3, sticky="nsew"
-            )
-
-            etiquetas = ctk.CTkFrame(self._metricas, fg_color="transparent")
-            etiquetas.pack(fill="x", pady=(12, 0))
-            Insignia(etiquetas, f"Clientes: {datos['clientes']}", tono="gris").pack(
-                side="left", padx=(0, 8)
-            )
-            Insignia(etiquetas, f"No encontrados: {est['No Encontrado']}", tono="gris").pack(
-                side="left", padx=(0, 8)
-            )
-            if datos["errores"]:
-                Insignia(etiquetas, f"Archivos con error: {datos['errores']}", tono="rojo").pack(
-                    side="left"
-                )
-        else:
+        self._tarjetas_metrica = []
+        for etiqueta, valor, tono in (("Comprobantes", total, "azul"),
+                                     ("Vigentes", est["Vigente"], "verde"),
+                                     ("Cancelados", est["Cancelado"], "rojo"),
+                                     ("Sin validar", est["Sin validar"], "ambar")):
+            self._tarjetas_metrica.append(Metrica(fila, etiqueta, str(valor), tono=tono))
+        columnas_previas = None
+        def distribuir(event):
+            nonlocal columnas_previas
+            if event.widget is fila:
+                from conxml.ui.responsive import escalado_widget
+                columnas = 4 if event.width / escalado_widget(fila) >= 680 else 2
+                if columnas == columnas_previas:
+                    return
+                columnas_previas = columnas
                 for col in range(4):
-                    Card(fila, height=72).grid(row=0, column=col, sticky="nsew", padx=(0, 12) if col < 3 else (0, 0))
+                    fila.columnconfigure(col, weight=1 if col < columnas else 0, uniform="metricas" if col < columnas else "")
+                for i, tarjeta in enumerate(self._tarjetas_metrica):
+                    tarjeta.grid(row=i // columnas, column=i % columnas, sticky="nsew",
+                                 padx=(0, 10 if i % columnas < columnas - 1 else 0), pady=(0, 10))
+        tk.Misc.bind(fila, "<Configure>", distribuir, add="+")
+        etiquetas = ctk.CTkFrame(self._metricas, fg_color="transparent")
+        etiquetas.pack(fill="x")
+        Insignia(etiquetas, f"Clientes: {datos['clientes']}", tono="gris").pack(side="left", padx=(0, 8))
+        Insignia(etiquetas, f"No encontrados: {est['No Encontrado']}", tono="gris").pack(side="left", padx=(0, 8))
+        if datos["errores"]:
+            Insignia(etiquetas, f"Archivos con error: {datos['errores']}", tono="rojo").pack(side="left")
 
         self._presentar_estado(total, est["Sin validar"])
 
     def _presentar_estado(self, total: int, sin_validar: int) -> None:
+        if total and not sin_validar:
+            self._estado.pack_forget()
+            return
+        self._estado.pack(fill="x", pady=(16, 0))
         tarjeta = Card(self._estado)
         tarjeta.pack(fill="x")
         if total == 0:
@@ -165,14 +163,13 @@ class PantallaResumen(ctk.CTkFrame):
             ).pack(anchor="w", padx=16, pady=(12, 0))
             ctk.CTkLabel(
                 tarjeta,
-                text="Empieza en Administración de XML 4.0: elige una carpeta, pulsa "
-                "'Leer XMLs' y los comprobantes se cargarán al catálogo.",
+                text="Abre la Bóveda, elige una carpeta o un periodo y pulsa Cargar selección para empezar.",
                 text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_BODY),
                 justify="left", wraplength=760,
             ).pack(anchor="w", padx=16, pady=(2, 0))
             BotonPrimario(
-                tarjeta, "Administración de XML 4.0",
-                comando=lambda: self.app.navegar("admin40"),
+                tarjeta, "Abrir Bóveda",
+                comando=lambda: self.app.navegar("boveda"),
             ).pack(anchor="w", padx=16, pady=(12, 16))
         elif sin_validar:
             ctk.CTkLabel(
@@ -190,3 +187,22 @@ class PantallaResumen(ctk.CTkFrame):
                 tarjeta, "Validar estatus ahora",
                 comando=lambda: self.app.navegar("admin40"),
             ).pack(anchor="w", padx=16, pady=(12, 16))
+
+        for widget in tarjeta.winfo_children():
+            if isinstance(widget, ctk.CTkLabel):
+                texto_adaptable(widget, tarjeta)
+
+    def _distribuir_acciones(self, event):
+        if event.widget is not self._acciones:
+            return
+        from conxml.ui.responsive import escalado_widget
+        columnas = 3 if event.width / escalado_widget(self._acciones) >= 850 else 1
+        if getattr(self, "_columnas_accion", None) == columnas:
+            return
+        self._columnas_accion = columnas
+        for col in range(3):
+            self._acciones.columnconfigure(col, weight=1 if col < columnas else 0,
+                                            uniform="acciones" if col < columnas else "")
+        for i, tarjeta in enumerate(self._tarjetas_accion):
+            tarjeta.grid(row=i // columnas, column=i % columnas, sticky="nsew",
+                         padx=(0, 12 if i % columnas < columnas - 1 else 0), pady=(0, 10))

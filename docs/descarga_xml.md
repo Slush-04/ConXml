@@ -8,11 +8,23 @@ CFDI y los archivos `.cer` y `.key` de la e.firma vigente. La contraseña de la
 llave se solicita al operar y se elimina del campo al iniciar la tarea.
 
 ConXml autentica con el SAT, envía la solicitud y conserva en SQLite su
-identificador y estado. El SAT procesa la solicitud de forma asíncrona. Desde el
-historial se consulta su avance; cuando termina, ConXml baja los paquetes ZIP
-y aplica el modo y destino elegidos en Configuración. El sistema registra que
-la solicitud ya se recuperó para no descargarla
-una segunda vez por accidente.
+identificador y estado. El SAT procesa la solicitud de forma asíncrona. Tras
+aceptar una solicitud, ConXml activa el seguimiento de ese RFC: mientras la
+aplicación siga abierta, consulta las solicitudes pendientes cada minuto y
+descarga los paquetes cuando estén disponibles. También se puede consultar una
+solicitud con **Consultar / descargar**.
+
+Para reanudar el seguimiento de solicitudes anteriores después de abrir ConXml,
+selecciona el cliente, indica sus archivos `.cer` y `.key`, escribe la
+contraseña y pulsa **Activar seguimiento**. La contraseña se borra del campo;
+la e.firma descifrada permanece solo en memoria hasta pulsar **Detener
+seguimiento** o cerrar ConXml. La aplicación no conserva credenciales para
+reactivarlo automáticamente al iniciar.
+
+La recuperación aplica el modo y destino elegidos en Configuración. ConXml
+registra cada paquete terminado en SQLite: si falla uno de varios paquetes,
+en el siguiente intento continúa con los restantes. Una solicitud recuperada
+ya no se vuelve a descargar.
 
 ## Elegir dónde y cómo guardar
 
@@ -43,8 +55,8 @@ Las opciones afectan únicamente a los paquetes recuperados por ConXml. Si
 descargas directamente en un navegador, el destino lo controla el navegador.
 
 Los certificados, las llaves privadas, las contraseñas y los tokens no se guardan
-en el catálogo. El historial sí persiste para que el usuario pueda continuar el
-seguimiento después de reiniciar ConXml. La conexión con el SAT requiere Internet
+en el catálogo. El historial y el avance de paquetes sí persisten para poder
+reactivar el seguimiento después de reiniciar ConXml. La conexión con el SAT requiere Internet
 y que la e.firma corresponda al RFC del cliente.
 
 Para instalar las dependencias de esta versión en el entorno local:
@@ -67,9 +79,8 @@ grandes, conviene dividir la búsqueda si el SAT responde que excede los límite
 
 ## Pendiente
 
-La descarga manual desde ConXml ya queda automatizada con el WebService. La
-ejecución periódica mientras la aplicación está cerrada y el inicio automático
-con el equipo son funciones separadas que aún no están implementadas.
+La ejecución periódica mientras la aplicación está cerrada y el inicio
+automático con el equipo son funciones separadas que aún no están implementadas.
 
 La primera conexión con una e.firma real debe hacerse localmente, con archivos
 del RFC autorizado; no se deben compartir e.firma, contraseña, token ni CFDI reales

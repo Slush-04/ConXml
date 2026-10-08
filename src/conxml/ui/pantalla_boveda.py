@@ -18,7 +18,7 @@ from conxml.catalog.db import Catalogo
 from conxml.catalog.importer import importar_carpetas
 from conxml.config import Config
 from conxml.ui import theme as th
-from conxml.ui.widgets import BotonPrimario, BotonSecundario, Encabezado, PanelCard, ResumenOperacion
+from conxml.ui.widgets import BotonPrimario, BotonSecundario, Encabezado, PanelCard, ResumenOperacion, BarraAdaptable, texto_adaptable
 
 
 class PantallaBoveda(ctk.CTkFrame):
@@ -42,24 +42,35 @@ class PantallaBoveda(ctk.CTkFrame):
 
         card = PanelCard(contenedor)
         card.grid(row=1, column=0, sticky="ew", pady=(20, 12))
-        card.columnconfigure(1, weight=1)
-        self._cliente_lbl = ctk.CTkLabel(card, text="Cliente activo: —", text_color=th.TEXTO, font=(th.FUENTE, th.TAM_BODY, "bold"))
-        self._cliente_lbl.grid(row=0, column=0, columnspan=2, padx=16, pady=(12, 8), sticky="w")
-        ctk.CTkLabel(card, text="Carpeta externa", text_color=th.TEXTO, font=(th.FUENTE, th.TAM_BODY)).grid(row=1, column=0, padx=(16, 8), pady=8, sticky="w")
-        self._entrada_origen = ctk.CTkEntry(card, textvariable=self._origen, placeholder_text="Selecciona cualquier carpeta que contenga XML")
-        self._entrada_origen.grid(row=1, column=1, columnspan=2, padx=8, pady=8, sticky="ew")
+        card.columnconfigure(0, weight=1)
+        self._cliente_lbl = ctk.CTkLabel(card, text="Cliente activo: —", text_color=th.TEXTO,
+                                        font=(th.FUENTE, th.TAM_BODY, "bold"), anchor="w")
+        self._cliente_lbl.grid(row=0, column=0, sticky="ew", padx=16, pady=(12, 4))
+        texto_adaptable(self._cliente_lbl, card)
+        ctk.CTkLabel(card, text="Carpeta externa", text_color=th.TEXTO_SECUNDARIO).grid(
+            row=1, column=0, sticky="w", padx=16)
+        origen = ctk.CTkFrame(card, fg_color="transparent")
+        origen.grid(row=2, column=0, sticky="ew", padx=16, pady=(4, 10))
+        origen.columnconfigure(0, weight=1)
+        self._entrada_origen = ctk.CTkEntry(origen, textvariable=self._origen,
+                                          placeholder_text="Selecciona una carpeta con archivos XML", height=34)
+        self._entrada_origen.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         self._entrada_origen.bind("<Return>", lambda _event: self._usar_carpeta_escrita())
-        BotonSecundario(card, "Examinar", self._elegir_origen).grid(row=1, column=3, padx=(0, 16), pady=8)
-        BotonSecundario(card, "Leer carpeta", self._usar_carpeta_escrita).grid(row=1, column=4, padx=(0, 16), pady=8)
-        ctk.CTkLabel(card, text="Origen", text_color=th.TEXTO, font=(th.FUENTE, th.TAM_BODY)).grid(row=2, column=0, padx=(16, 8), pady=(8, 12), sticky="w")
-        self._combo_direccion = ctk.CTkComboBox(card, variable=self._direccion, values=["Emitidos", "Recibidos", "Masivo"], command=self._cambiar_origen, width=150)
-        self._combo_direccion.grid(row=2, column=1, padx=8, pady=(8, 12), sticky="w")
-        ctk.CTkLabel(card, text="Año", text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA)).grid(row=2, column=2, padx=(8, 0), pady=(8, 12), sticky="e")
-        self._combo_anio = ctk.CTkComboBox(card, variable=self._anio, values=["Todos"], command=lambda _v: self._actualizar_lista(), width=105)
-        self._combo_anio.grid(row=2, column=3, padx=(8, 16), pady=(8, 12), sticky="w")
-        ctk.CTkLabel(card, text="Mes", text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA)).grid(row=3, column=2, padx=(8, 0), pady=(0, 12), sticky="e")
-        self._combo_mes = ctk.CTkComboBox(card, variable=self._mes, values=["Todos"], command=lambda _v: self._actualizar_lista(), width=105)
-        self._combo_mes.grid(row=3, column=3, padx=(8, 16), pady=(0, 12), sticky="w")
+        BotonSecundario(origen, "Examinar", self._elegir_origen).grid(row=0, column=1, padx=(0, 8))
+        BotonSecundario(origen, "Leer carpeta", self._usar_carpeta_escrita).grid(row=0, column=2)
+        filtros = BarraAdaptable(card)
+        filtros.grid(row=3, column=0, sticky="ew", padx=16, pady=(0, 12))
+        for nombre, variable, valores, comando, atributo, ancho in (
+            ("Origen", self._direccion, ["Emitidos", "Recibidos", "Masivo"], self._cambiar_origen, "_combo_direccion", 150),
+            ("Año", self._anio, ["Todos"], lambda _v: self._actualizar_lista(), "_combo_anio", 105),
+            ("Mes", self._mes, ["Todos"], lambda _v: self._actualizar_lista(), "_combo_mes", 105),
+        ):
+            grupo = ctk.CTkFrame(filtros, fg_color="transparent")
+            ctk.CTkLabel(grupo, text=nombre, text_color=th.TEXTO_SECUNDARIO).pack(side="left", padx=(0, 8))
+            combo = ctk.CTkComboBox(grupo, variable=variable, values=valores, command=comando, width=ancho)
+            combo.pack(side="left")
+            setattr(self, atributo, combo)
+            filtros.agregar(grupo)
 
         lista = PanelCard(contenedor)
         lista.grid(row=3, column=0, sticky="nsew")
@@ -72,10 +83,16 @@ class PantallaBoveda(ctk.CTkFrame):
         marco = ctk.CTkFrame(lista, fg_color="transparent")
         marco.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 16)); marco.rowconfigure(0, weight=1); marco.columnconfigure(0, weight=1)
         self._tabla = ttk.Treeview(marco, columns=("direccion", "anio", "mes", "archivo"), show="headings")
-        for clave, titulo, ancho in (("direccion", "Tipo", 100), ("anio", "Año", 70), ("mes", "Mes", 70), ("archivo", "Archivo XML", 500)):
+        for clave, titulo, ancho in (("direccion", "Tipo", 100), ("anio", "Año", 70), ("mes", "Mes", 70), ("archivo", "Archivo XML", 280)):
             self._tabla.heading(clave, text=titulo); self._tabla.column(clave, width=ancho, anchor="w")
         self._tabla.grid(row=0, column=0, sticky="nsew")
         scroll = ttk.Scrollbar(marco, orient="vertical", command=self._tabla.yview); scroll.grid(row=0, column=1, sticky="ns"); self._tabla.configure(yscrollcommand=scroll.set)
+        scroll_x = ttk.Scrollbar(marco, orient="horizontal", command=self._tabla.xview)
+        scroll_x.grid(row=1, column=0, sticky="ew")
+        self._tabla.configure(xscrollcommand=scroll_x.set)
+        self._vacio = ctk.CTkLabel(marco, text="Elige una carpeta o un periodo para ver sus XML.",
+                                  text_color=th.TEXTO_SECUNDARIO, fg_color=th.FONDO_TARJETA)
+        self._vacio.place(relx=.5, rely=.5, anchor="center")
         self._resumen = ResumenOperacion(contenedor); self._resumen.grid(row=4, column=0, sticky="ew", pady=(12, 0))
         self._detalles_usados = False; self.al_alternar_detalles(self.app.detalles_visibles)
 
@@ -213,6 +230,10 @@ class PantallaBoveda(ctk.CTkFrame):
                 self._anio.get(), self._mes.get(),
             )
         self._archivos_actuales = archivos
+        if archivos:
+            self._vacio.place_forget()
+        else:
+            self._vacio.place(relx=.5, rely=.5, anchor="center")
         for item in self._tabla.get_children(): self._tabla.delete(item)
         for archivo in archivos:
             self._tabla.insert("", "end", values=self._fila_archivo(archivo))

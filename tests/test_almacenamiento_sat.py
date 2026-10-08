@@ -73,21 +73,23 @@ def test_recuperacion_sat_importa_solo_modo_organizado(tmp_path, monkeypatch, mo
     monkeypatch.setattr("conxml.ui.pantalla_descargas.CredencialEFirma.cargar", lambda *args: SimpleNamespace(rfc="EKU9003173C9"))
     monkeypatch.setattr("conxml.ui.pantalla_descargas.ClienteDescargaSAT", SAT)
     if modo == "zip":
-        monkeypatch.setattr("conxml.ui.pantalla_descargas.importar_carpetas", lambda *args: pytest.fail("ZIP no debe importar al catálogo"))
+        monkeypatch.setattr("conxml.sat.seguimiento.importar_carpetas", lambda *args: pytest.fail("ZIP no debe importar al catálogo"))
     resultados = []
-    app = SimpleNamespace(db_path=Config().db_path, ejecutar=lambda trabajo, presentar, texto: presentar(trabajo()), actualizar_resumen=lambda: None, _pantallas={})
+    app = SimpleNamespace(db_path=Config().db_path, ejecutar=lambda trabajo, presentar, texto, **kwargs: presentar(trabajo()), actualizar_resumen=lambda: None, _pantallas={})
     pantalla = SimpleNamespace(
         app=app, _tabla=SimpleNamespace(selection=lambda: ["SOL1"]),
         _credenciales=lambda: ("cert", "key", "secret"), _datos_cliente=lambda: ("C1", "EKU9003173C9"),
         _estado_lbl=SimpleNamespace(configure=lambda **kw: None), _password=SimpleNamespace(set=lambda valor: None),
         _renderizar_historial=lambda filas: None,
+        _presentar_error=lambda error: pytest.fail(str(error)),
+        _guardar_firma=lambda fiel: None,
     )
     def presentar(datos, resultado):
         resultados.append(resultado)
         PantallaDescargas._presentar_verificacion(pantalla, datos, resultado)
     pantalla._presentar_verificacion = presentar
     PantallaDescargas._verificar(pantalla)
-    assert resultados[0][-1] is True
+    assert resultados[0].recuperada is True
     with Catalogo(Config().db_path) as cat:
         assert cat.contar("comprobantes") == (1 if modo == "organizado" else 0)
         fila = cat.obtener_solicitud_descarga("SOL1")

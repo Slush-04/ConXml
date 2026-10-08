@@ -1,12 +1,33 @@
 """Componentes reutilizables de la interfaz ConXml sobre CustomTkinter (Fluent Empresarial)."""
 from __future__ import annotations
 
+import tkinter as tk
 import customtkinter as ctk
 
 from conxml.ui import theme as th
 from conxml.ui import responsive as resp
 
 PASO = th.PASO
+
+
+def ajustar_ancho_disponible(widget, padre, margen: int = 64) -> None:
+    """Mantiene un contenido desplazable tan ancho como el área útil de su página."""
+    def ajustar(_event=None) -> None:
+        try:
+            escala = resp.escalado_widget(widget)
+            ancho = int(padre.winfo_width() / escala) - margen
+            if ancho > 100 and ancho != getattr(widget, "_ancho_disponible_aplicado", None):
+                widget.configure(width=ancho)
+                widget._ancho_disponible_aplicado = ancho
+        except (AttributeError, tk.TclError, TypeError, ValueError):
+            pass
+
+    padre.bind("<Configure>", ajustar, add="+")
+    widget.bind("<Map>", ajustar, add="+")
+    try:
+        padre.after_idle(ajustar)
+    except tk.TclError:
+        pass
 
 
 class PanelCard(ctk.CTkFrame):
@@ -56,6 +77,7 @@ class BotonPrimario(ctk.CTkButton):
             text_color="#FFFFFF",
             border_width=0,
             height=34,
+            width=130,
             corner_radius=th.RADIO_BOTON,
             font=(th.FUENTE, th.TAM_BODY, "bold"),
             **kwargs,
@@ -78,10 +100,11 @@ class BotonSecundario(ctk.CTkButton):
             command=comando,
             fg_color=th.FONDO_TARJETA,
             hover_color=th.PRIMARIO_FONDO,
-            text_color=th.PRIMARIO,
+            text_color=th.TEXTO,
             border_width=1,
             border_color=th.BORDE,
             height=32,
+            width=112,
             corner_radius=th.RADIO_BOTON,
             font=(th.FUENTE, th.TAM_NOTA),
             **kwargs,
@@ -119,17 +142,17 @@ class Metrica(PanelCard):
 
         # Barra lateral de color de acento
         self.barra = ctk.CTkFrame(self, fg_color=color, width=3, height=10, corner_radius=0)
-        self.barra.pack(side="left", fill="y")
+        self.barra.place(x=16, y=16)
 
         # Contenido
         self.contenido = ctk.CTkFrame(self, fg_color="transparent")
-        self.contenido.pack(side="left", fill="both", expand=True, padx=14, pady=10)
+        self.contenido.pack(fill="both", expand=True, padx=(26, 16), pady=12)
 
         self.lbl_etiqueta = ctk.CTkLabel(
             self.contenido,
-            text=etiqueta.upper(),
+            text=etiqueta,
             text_color=th.TEXTO_SECUNDARIO,
-            font=(th.FUENTE, th.TAM_NOTA, "bold"),
+            font=(th.FUENTE, th.TAM_NOTA),
             anchor="w",
         )
         self.lbl_etiqueta.pack(anchor="w", fill="x")
@@ -137,7 +160,7 @@ class Metrica(PanelCard):
         self.lbl_valor = ctk.CTkLabel(
             self.contenido,
             text=valor,
-            text_color=color,
+            text_color=th.TEXTO,
             font=(th.FUENTE, th.TAM_H1, "bold"),
             anchor="w",
         )
@@ -158,11 +181,13 @@ class TarjetaAccion(PanelCard):
     ) -> None:
         super().__init__(parent)
         self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
         self._comando = comando
 
         self.contenedor = ctk.CTkFrame(self, fg_color="transparent")
         self.contenedor.grid(row=0, column=0, sticky="nsew", padx=16, pady=14)
         self.contenedor.columnconfigure(0, weight=1)
+        self.contenedor.rowconfigure(1, weight=1)
 
         self.cabecera = ctk.CTkFrame(self.contenedor, fg_color="transparent")
         self.cabecera.grid(row=0, column=0, sticky="ew")
@@ -177,7 +202,7 @@ class TarjetaAccion(PanelCard):
             font=(th.FUENTE, th.TAM_H3, "bold"),
             anchor="w",
         )
-        self.lbl_titulo.pack(side="left", padx=(10, 0))
+        self.lbl_titulo.pack(side="left", fill="x", expand=True, padx=(10, 0))
 
         self.lbl_desc = ctk.CTkLabel(
             self.contenedor,
@@ -190,9 +215,11 @@ class TarjetaAccion(PanelCard):
         )
         self.lbl_desc.grid(row=1, column=0, sticky="w", pady=(8, 0))
 
-        self._boton = BotonSecundario(self.contenedor, "Ir →", comando)
+        self._boton = BotonSecundario(self.contenedor, "Abrir →", comando)
         self._boton.grid(row=2, column=0, sticky="w", pady=(12, 0))
 
+        texto_adaptable(self.lbl_desc, self, margen=32)
+        texto_adaptable(self.lbl_titulo, self, margen=84)
         self._vincular_events(self)
 
     def _vincular_events(self, widget) -> None:
@@ -230,12 +257,11 @@ class Encabezado(ctk.CTkFrame):
             wraplength=620,
         )
         self._lbl_sub.pack(anchor="w", fill="x", pady=(2, 0))
-        sep = ctk.CTkFrame(self, height=1, fg_color=th.BORDE)
-        sep.pack(fill="x", pady=(10, 0))
-        self.bind("<Configure>", self._al_configurar, add="+")
+
+        tk.Misc.bind(self, "<Configure>", self._al_configurar, add="+")
 
     def _al_configurar(self, event) -> None:
-        if getattr(event, "widget", None) is not self:
+        if getattr(event, "widget", None) is not self or not self.winfo_viewable():
             return
         self.ajustar_ancho(int((getattr(event, "width", 0) or 0) / resp.escalado_widget(self)))
 
@@ -249,6 +275,8 @@ class Encabezado(ctk.CTkFrame):
             return
         wrap = max(200, base)
         try:
+            if self._lbl_titulo.cget("wraplength") == wrap:
+                return
             self._lbl_titulo.configure(wraplength=wrap)
             self._lbl_sub.configure(wraplength=wrap)
         except Exception:
@@ -280,7 +308,7 @@ class FilaArchivo(ctk.CTkFrame):
         etiqueta: str,
         boton: str = "Examinar…",
         comando_secundario=None,
-        boton_secundario: str = "➕ Añadir",
+        boton_secundario: str = "Añadir",
         placeholder_text: str = "",
     ) -> None:
         super().__init__(parent, fg_color="transparent")
@@ -362,8 +390,8 @@ class ResumenOperacion(ctk.CTkFrame):
             font=(th.FUENTE, th.TAM_NOTA), wraplength=620, justify="left", anchor="w",
         )
         self._detalle.pack(anchor="w", fill="x", pady=(4, 0))
-        self.bind("<Configure>", self._al_configurar, add="+")
-        self.contenedor.bind("<Configure>", self._al_configurar, add="+")
+        tk.Misc.bind(self, "<Configure>", self._al_configurar, add="+")
+        tk.Misc.bind(self.contenedor, "<Configure>", self._al_configurar, add="+")
 
     def _al_configurar(self, event) -> None:
         if getattr(event, "widget", None) not in (self, self.contenedor):
@@ -406,3 +434,57 @@ class ResumenOperacion(ctk.CTkFrame):
         if accion is not None:
             self._accion = BotonSecundario(self._linea, accion[0], accion[1])
             self._accion.pack(side="left", padx=(12, 0))
+
+
+class BarraAdaptable(ctk.CTkFrame):
+    """Reparte controles en filas independientes según el espacio disponible."""
+
+    def __init__(self, parent, **kwargs):
+        super().__init__(parent, fg_color="transparent", height=1, **kwargs)
+        self._elementos = []
+        self._distribucion = None
+        tk.Misc.bind(self, "<Configure>", self._acomodar, add="+")
+
+    def agregar(self, widget):
+        self._elementos.append(widget)
+        widget.place(x=0, y=0)
+        self._distribucion = None
+        self.after_idle(self._acomodar)
+        return widget
+
+    def _acomodar(self, event=None):
+        if event is not None and event.widget is not self:
+            return
+        escala = resp.escalado_widget(self)
+        ancho = self.winfo_width() / escala
+        if ancho < 10:
+            return
+        x, y, alto_fila = 0, 0, 0
+        posiciones = []
+        for widget in self._elementos:
+            ancho_item = widget.winfo_reqwidth() / escala
+            alto_item = widget.winfo_reqheight() / escala
+            if x and x + ancho_item > ancho:
+                x, y, alto_fila = 0, y + alto_fila + 8, 0
+            posiciones.append((x, y))
+            x += ancho_item + 8
+            alto_fila = max(alto_fila, alto_item)
+        alto = max(1, y + alto_fila)
+        distribucion = (posiciones, alto)
+        if distribucion == self._distribucion:
+            return
+        self._distribucion = distribucion
+        for widget, (x, y) in zip(self._elementos, posiciones):
+            widget.place_configure(x=x, y=y)
+        self.configure(height=alto)
+
+
+def texto_adaptable(etiqueta, contenedor, margen=32):
+    """Ajusta descripciones y rutas largas al ancho lógico de su panel."""
+    def ajustar(event):
+        if event.widget is contenedor and contenedor.winfo_viewable():
+            ancho = max(80, int(contenedor.winfo_width() / resp.escalado_widget(contenedor)) - margen)
+            if etiqueta.cget("wraplength") != ancho:
+                etiqueta.configure(wraplength=ancho)
+    tk.Misc.bind(contenedor, "<Configure>", ajustar, add="+")
+    tk.Misc.bind(contenedor, "<Map>", ajustar, add="+")

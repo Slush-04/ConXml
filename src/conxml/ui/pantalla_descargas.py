@@ -1,17 +1,14 @@
 """Interfaz de solicitudes, seguimiento y recuperación del SAT."""
 from __future__ import annotations
 
-import json
 import tkinter as tk
-from datetime import date, datetime
+from datetime import date
 from tkinter import filedialog, messagebox, ttk
 
 import customtkinter as ctk
 
 from conxml.catalog.db import Catalogo
-from conxml.catalog.importer import importar_carpetas
 from conxml.config import Config
-from conxml.sat.almacenamiento import guardar_paquete
 from conxml.sat.descarga_masiva import (
     ClienteDescargaSAT,
     CredencialEFirma,
@@ -19,23 +16,33 @@ from conxml.sat.descarga_masiva import (
     FiltroDescarga,
     RespuestaSAT,
 )
+from conxml.sat.seguimiento import ResultadoSeguimiento, procesar_solicitud
 from conxml.ui import responsive as resp
 from conxml.ui import theme as th
-from conxml.ui.widgets import BotonPrimario, BotonSecundario, Encabezado, Insignia, PanelCard
+from conxml.ui.selector_fecha import SelectorFecha
+from conxml.ui.widgets import (
+    BotonPrimario, BotonSecundario, Encabezado, Insignia, PanelCard,
+    BarraAdaptable, ajustar_ancho_disponible, texto_adaptable,
+)
 
 ESTADOS = {
     0: "Token inválido", 1: "Aceptada", 2: "En proceso", 3: "Terminada",
     4: "Error", 5: "Rechazada", 6: "Vencida",
 }
 TIPOS = {"Todos": "", "Ingreso": "I", "Egreso": "E", "Traslado": "T", "Nómina": "N", "Pago": "P"}
+INTERVALO_SEGUIMIENTO_MS = 60_000
 
 
 class PantallaDescargas(ctk.CTkFrame):
     def __init__(self, parent: ctk.CTkFrame, app) -> None:
         super().__init__(parent, fg_color="transparent")
         self.app = app
+        self._firmas_activas: dict[str, CredencialEFirma] = {}
+        self._revision_after: str | None = None
+        self._rfc_visible = ""
         self._contenedor = ctk.CTkScrollableFrame(self, fg_color="transparent")
         self._contenedor.pack(fill="both", expand=True, padx=32, pady=24)
+        ajustar_ancho_disponible(self._contenedor, self)
         Encabezado(
             self._contenedor, "Descarga SAT",
             "Solicita CFDI por cliente y periodo; después consulta y recupera los paquetes del SAT.",
@@ -51,39 +58,64 @@ class PantallaDescargas(ctk.CTkFrame):
         cred = PanelCard(self._contenedor)
         cred.pack(fill="x", pady=(8, 10))
         cred.columnconfigure(1, weight=1)
+        ctk.CTkLabel(cred, text="01  ·  Acceso con e.firma", font=(th.FUENTE, th.TAM_H3, "bold")).grid(row=0, column=0, columnspan=3, sticky="w", padx=16, pady=(12, 4))
         self._cer = tk.StringVar()
         self._key = tk.StringVar()
         self._password = tk.StringVar()
-        ctk.CTkLabel(cred, text="Certificado e.firma (.cer)", text_color=th.TEXTO).grid(row=0, column=0, padx=(16, 8), pady=(12, 6), sticky="w")
-        ctk.CTkEntry(cred, textvariable=self._cer, placeholder_text="Selecciona el archivo .cer").grid(row=0, column=1, padx=8, pady=(12, 6), sticky="ew")
-        BotonSecundario(cred, "Examinar", self._elegir_cer).grid(row=0, column=2, padx=(0, 16), pady=(12, 6))
-        ctk.CTkLabel(cred, text="Llave privada (.key)", text_color=th.TEXTO).grid(row=1, column=0, padx=(16, 8), pady=6, sticky="w")
-        ctk.CTkEntry(cred, textvariable=self._key, placeholder_text="Selecciona el archivo .key").grid(row=1, column=1, padx=8, pady=6, sticky="ew")
-        BotonSecundario(cred, "Examinar", self._elegir_key).grid(row=1, column=2, padx=(0, 16), pady=6)
-        ctk.CTkLabel(cred, text="Contraseña de .key", text_color=th.TEXTO).grid(row=2, column=0, padx=(16, 8), pady=(6, 12), sticky="w")
-        ctk.CTkEntry(cred, textvariable=self._password, show="●", placeholder_text="Se usa solo durante la operación").grid(row=2, column=1, padx=8, pady=(6, 12), sticky="ew")
+        ctk.CTkLabel(cred, text="Certificado e.firma (.cer)", text_color=th.TEXTO).grid(row=1, column=0, padx=(16, 8), pady=(12, 6), sticky="w")
+        ctk.CTkEntry(cred, textvariable=self._cer, placeholder_text="Selecciona el archivo .cer").grid(row=1, column=1, padx=8, pady=(12, 6), sticky="ew")
+        BotonSecundario(cred, "Examinar", self._elegir_cer).grid(row=1, column=2, padx=(0, 16), pady=(12, 6))
+        ctk.CTkLabel(cred, text="Llave privada (.key)", text_color=th.TEXTO).grid(row=2, column=0, padx=(16, 8), pady=6, sticky="w")
+        ctk.CTkEntry(cred, textvariable=self._key, placeholder_text="Selecciona el archivo .key").grid(row=2, column=1, padx=8, pady=6, sticky="ew")
+        BotonSecundario(cred, "Examinar", self._elegir_key).grid(row=2, column=2, padx=(0, 16), pady=6)
+        ctk.CTkLabel(cred, text="Contraseña de .key", text_color=th.TEXTO).grid(row=3, column=0, padx=(16, 8), pady=(6, 12), sticky="w")
+        ctk.CTkEntry(cred, textvariable=self._password, show="●", placeholder_text="Se usa solo durante la operación").grid(row=3, column=1, padx=8, pady=(6, 12), sticky="ew")
         ctk.CTkLabel(
-            cred, text="ConXml no guarda la contraseña ni copia la llave privada.",
+            cred, text="ConXml no guarda la contraseña ni copia la llave privada. El seguimiento conserva la e.firma en memoria hasta detenerlo o cerrar la aplicación.",
             text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA),
-        ).grid(row=2, column=2, padx=(0, 16), pady=(6, 12), sticky="w")
+            justify="left", wraplength=750,
+        ).grid(row=4, column=0, columnspan=3, padx=16, pady=(0, 12), sticky="w")
+        self._btn_seguimiento = BotonSecundario(
+            cred, "Activar seguimiento", self._alternar_seguimiento,
+        )
+        self._btn_seguimiento.grid(row=5, column=0, padx=16, pady=(0, 12), sticky="w")
+        self._seguimiento_lbl = ctk.CTkLabel(
+            cred, text="Para vigilar solicitudes anteriores, ingresa la contraseña una vez y activa el seguimiento.",
+            text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA),
+            anchor="w", justify="left", wraplength=550,
+        )
+        self._seguimiento_lbl.grid(row=5, column=1, columnspan=2, sticky="ew", padx=(0, 16), pady=(0, 12))
 
         solicitud = PanelCard(self._contenedor)
         solicitud.pack(fill="x", pady=(0, 10))
-        solicitud.columnconfigure(1, weight=1)
+        solicitud.columnconfigure(0, weight=1)
+        ctk.CTkLabel(solicitud, text="02  ·  Periodo y comprobantes", font=(th.FUENTE, th.TAM_H3, "bold")).grid(
+            row=0, column=0, sticky="w", padx=16, pady=(12, 4))
         self._direccion = tk.StringVar(value="Emitidos")
-        self._desde = tk.StringVar(value=date.today().replace(day=1).isoformat())
-        self._hasta = tk.StringVar(value=date.today().isoformat())
+        self._desde = tk.StringVar(value=date.today().replace(day=1).strftime("%d/%m/%Y"))
+        self._hasta = tk.StringVar(value=date.today().strftime("%d/%m/%Y"))
         self._tipo = tk.StringVar(value="Todos")
-        ctk.CTkLabel(solicitud, text="Dirección", text_color=th.TEXTO).grid(row=0, column=0, padx=(16, 8), pady=(12, 8), sticky="w")
-        ctk.CTkComboBox(solicitud, variable=self._direccion, values=["Emitidos", "Recibidos"], width=150).grid(row=0, column=1, padx=8, pady=(12, 8), sticky="w")
-        ctk.CTkLabel(solicitud, text="Tipo CFDI", text_color=th.TEXTO).grid(row=0, column=2, padx=(12, 8), pady=(12, 8), sticky="e")
-        ctk.CTkComboBox(solicitud, variable=self._tipo, values=list(TIPOS), width=150).grid(row=0, column=3, padx=(8, 16), pady=(12, 8), sticky="w")
-        ctk.CTkLabel(solicitud, text="Desde", text_color=th.TEXTO).grid(row=1, column=0, padx=(16, 8), pady=(4, 12), sticky="w")
-        ctk.CTkEntry(solicitud, textvariable=self._desde, placeholder_text="AAAA-MM-DD", width=150).grid(row=1, column=1, padx=8, pady=(4, 12), sticky="w")
-        ctk.CTkLabel(solicitud, text="Hasta", text_color=th.TEXTO).grid(row=1, column=2, padx=(12, 8), pady=(4, 12), sticky="e")
-        ctk.CTkEntry(solicitud, textvariable=self._hasta, placeholder_text="AAAA-MM-DD", width=150).grid(row=1, column=3, padx=(8, 16), pady=(4, 12), sticky="w")
+        campos = BarraAdaptable(solicitud)
+        campos.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 8))
+        for etiqueta, variable, valores in (("Dirección", self._direccion, ["Emitidos", "Recibidos"]),
+                                            ("Tipo CFDI", self._tipo, list(TIPOS)),
+                                            ("Desde · DD/MM/AAAA", self._desde, None),
+                                            ("Hasta · DD/MM/AAAA", self._hasta, None)):
+            grupo = ctk.CTkFrame(campos, fg_color="transparent")
+            ctk.CTkLabel(grupo, text=etiqueta, text_color=th.TEXTO_SECUNDARIO,
+                         font=(th.FUENTE, th.TAM_NOTA)).pack(anchor="w")
+            if valores:
+                entrada = ctk.CTkComboBox(grupo, variable=variable, values=valores, width=150, height=34)
+            else:
+                entrada = SelectorFecha(grupo, variable=variable, anio_completo=True)
+            entrada.pack(fill="x", pady=(2, 0))
+            campos.agregar(grupo)
+        ctk.CTkLabel(
+            solicitud, text="Para CFDI recibidos, el SAT permite descargar XML vigentes.",
+            text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA),
+        ).grid(row=3, column=0, sticky="w", padx=16, pady=(0, 12))
         self._btn_solicitar = BotonPrimario(solicitud, "Solicitar al SAT", self._solicitar)
-        self._btn_solicitar.grid(row=0, column=4, rowspan=2, padx=(8, 16), pady=12, sticky="ns")
+        self._btn_solicitar.grid(row=2, column=0, sticky="e", padx=16, pady=(0, 12))
 
         historial = PanelCard(self._contenedor)
         historial.pack(fill="both", expand=True, pady=(0, 8))
@@ -92,27 +124,38 @@ class PantallaDescargas(ctk.CTkFrame):
         cabecera = ctk.CTkFrame(historial, fg_color="transparent")
         cabecera.grid(row=0, column=0, sticky="ew", padx=16, pady=(12, 8))
         self._estado_lbl = ctk.CTkLabel(cabecera, text="Solicitudes de este cliente", text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA))
-        self._estado_lbl.pack(side="left")
+        cabecera.columnconfigure(0, weight=1)
+        self._estado_lbl.grid(row=0, column=0, sticky="ew", padx=(0, 12))
+        self._estado_lbl.configure(anchor="w", justify="left", wraplength=380)
+        texto_adaptable(self._estado_lbl, cabecera, margen=200)
         self._btn_verificar = BotonSecundario(cabecera, "Consultar / descargar", self._verificar)
-        self._btn_verificar.pack(side="right")
+        self._btn_verificar.grid(row=0, column=1, sticky="e")
         marco = ctk.CTkFrame(historial, fg_color="transparent")
         marco.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 16))
         marco.rowconfigure(0, weight=1); marco.columnconfigure(0, weight=1)
         self._tabla = ttk.Treeview(
             marco, columns=("id", "direccion", "periodo", "estado", "cfdis", "mensaje"),
-            show="headings", selectmode="browse", height=8,
+            show="headings", selectmode="browse", height=8, style="Solicitudes.Treeview",
         )
         for col, titulo, ancho in (
-            ("id", "Solicitud SAT", 250), ("direccion", "Tipo", 90),
-            ("periodo", "Periodo", 170), ("estado", "Estado", 110),
-            ("cfdis", "CFDI", 70), ("mensaje", "Respuesta SAT", 260),
+            ("id", "Solicitud SAT", 165), ("direccion", "Tipo", 76),
+            ("periodo", "Periodo", 132), ("estado", "Estado", 90),
+            ("cfdis", "CFDI", 58), ("mensaje", "Respuesta SAT", 210),
         ):
             self._tabla.heading(col, text=titulo)
-            self._tabla.column(col, width=ancho, anchor="w")
+            self._tabla.column(
+                col, width=ancho, minwidth=70 if col == "mensaje" else 48,
+                anchor="w", stretch=(col == "mensaje"),
+            )
         self._tabla.grid(row=0, column=0, sticky="nsew")
         scroll = ttk.Scrollbar(marco, orient="vertical", command=self._tabla.yview)
         scroll.grid(row=0, column=1, sticky="ns"); self._tabla.configure(yscrollcommand=scroll.set)
-        self.botones = [self._btn_solicitar, self._btn_verificar]
+        scroll_x = ttk.Scrollbar(marco, orient="horizontal", command=self._tabla.xview)
+        scroll_x.grid(row=1, column=0, sticky="ew")
+        self._tabla.configure(xscrollcommand=scroll_x.set)
+        texto_adaptable(self._cliente_lbl, self._contenedor)
+        texto_adaptable(self._destino_lbl, self._contenedor)
+        self.botones = [self._btn_solicitar, self._btn_verificar, self._btn_seguimiento]
 
     def aplicar_modo_compacto(self, ancho_compacto: bool, alto_compacto: bool) -> None:
         compacto = ancho_compacto or alto_compacto
@@ -128,11 +171,134 @@ class PantallaDescargas(ctk.CTkFrame):
             rfc = detalle["rfc"] if detalle else ""
             solicitudes = catalogo.solicitudes_descarga_cliente(cliente)
         self._cliente_lbl.configure(text=f"Cliente activo: {detalle['nombre'] if detalle else cliente} · RFC: {rfc or 'falta registrar'}")
+        self._rfc_visible = rfc
+        self._actualizar_aviso_seguimiento()
         config = Config()
         modo = "ZIP sin extraer" if config.modo_descarga_sat == "zip" else "XML organizados e importados"
         destino = config.carpeta_zip_sat if config.modo_descarga_sat == "zip" else config.carpeta_boveda
         self._destino_lbl.configure(text=f"Guardado: {modo}\nDestino: {destino}\nPuedes cambiarlo en Configuración.")
         self._renderizar_historial(solicitudes)
+
+    def _actualizar_aviso_seguimiento(self) -> None:
+        activo = self._rfc_visible in self._firmas_activas
+        self._btn_seguimiento.configure(text="Detener seguimiento" if activo else "Activar seguimiento")
+        if activo:
+            self._seguimiento_lbl.configure(
+                text="Seguimiento activo. ConXml consulta cada minuto y recupera los paquetes listos mientras permanezca abierto."
+            )
+        else:
+            self._seguimiento_lbl.configure(
+                text="Para vigilar solicitudes anteriores, ingresa la contraseña una vez y activa el seguimiento."
+            )
+
+    def _guardar_firma(self, fiel: CredencialEFirma) -> None:
+        self._firmas_activas[fiel.rfc] = fiel
+        self._actualizar_aviso_seguimiento()
+        self._programar_revision(1_000)
+
+    def _programar_revision(self, demora_ms: int = INTERVALO_SEGUIMIENTO_MS) -> None:
+        if self._revision_after is not None:
+            self.after_cancel(self._revision_after)
+            self._revision_after = None
+        if self._firmas_activas:
+            self._revision_after = self.after(demora_ms, self._revision_automatica)
+
+    def _alternar_seguimiento(self) -> None:
+        try:
+            _, rfc = self._datos_cliente()
+            if rfc in self._firmas_activas:
+                self._firmas_activas.pop(rfc)
+                self._programar_revision()
+                self._actualizar_aviso_seguimiento()
+                return
+            cer, key, password = self._credenciales()
+        except ErrorDescargaSAT as exc:
+            messagebox.showerror("Descarga SAT", str(exc), parent=self)
+            return
+
+        def trabajo():
+            fiel = CredencialEFirma.cargar(cer, key, password)
+            if fiel.rfc != rfc:
+                raise ErrorDescargaSAT("La e.firma no corresponde al RFC del cliente activo.")
+            return fiel
+
+        self.app.ejecutar(trabajo, self._guardar_firma, "Activando seguimiento SAT", al_error=self._presentar_error)
+        self._password.set("")
+
+    def _revision_automatica(self) -> None:
+        self._revision_after = None
+        if not self._firmas_activas:
+            return
+        if self.app._ocupada:
+            self._programar_revision()
+            return
+        firmas = dict(self._firmas_activas)
+        with Catalogo(self.app.db_path) as catalogo:
+            pendientes = [dict(fila) for fila in catalogo.solicitudes_descarga_pendientes(set(firmas))]
+        if not pendientes:
+            self._programar_revision()
+            return
+        # Un lote acotado deja la interfaz disponible entre consultas.
+        lote = pendientes[:3]
+        config = Config()
+
+        def trabajo():
+            resultados = []
+            for datos in lote:
+                sat = None
+                try:
+                    sat = ClienteDescargaSAT(firmas[datos["rfc"]])
+                    resultado = procesar_solicitud(sat, self.app.db_path, datos, config)
+                    resultados.append((datos, resultado, ""))
+                except Exception as exc:
+                    from conxml.diagnostico import sanitizar_texto
+
+                    mensaje = sanitizar_texto(str(exc)) if isinstance(exc, ErrorDescargaSAT) else "Error inesperado; consulta el diagnóstico."
+                    with Catalogo(self.app.db_path) as catalogo:
+                        catalogo.registrar_error_solicitud(datos["id_sat"], mensaje)
+                    resultados.append((datos, None, mensaje))
+                finally:
+                    if sat is not None:
+                        sat.cerrar()
+            return resultados
+
+        iniciado = self.app.ejecutar(
+            trabajo, self._presentar_revision_automatica, "Consultando solicitudes SAT pendientes",
+            al_error=self._error_revision_automatica,
+        )
+        if not iniciado:
+            self._programar_revision()
+
+    def _presentar_revision_automatica(self, resultados) -> None:
+        recuperados = sum(bool(resultado and resultado.recuperada) for _, resultado, _ in resultados)
+        errores = [mensaje for _, _, mensaje in resultados if mensaje]
+        if errores:
+            self.app.registro(f"Seguimiento SAT: {len(errores)} solicitud(es) con error; {errores[0]}")
+        with Catalogo(self.app.db_path) as catalogo:
+            filas = catalogo.solicitudes_descarga_cliente(self.app.cliente_actual) if self.app.cliente_actual else []
+        if self.app.cliente_actual:
+            self._renderizar_historial(filas)
+        if recuperados:
+            self.app.actualizar_resumen()
+            admin = self.app._pantallas.get("admin40")
+            if admin:
+                admin._cargar_tabla()
+            self._estado_lbl.configure(text=f"Seguimiento automático: {recuperados} solicitud(es) recuperada(s).")
+        elif errores:
+            self._estado_lbl.configure(text=f"Seguimiento automático: {errores[0]}")
+        self._programar_revision()
+
+    def _error_revision_automatica(self, error: Exception) -> None:
+        self.app.registro(f"Seguimiento SAT: {type(error).__name__}")
+        self._estado_lbl.configure(text="No se pudo completar la revisión automática; se reintentará.")
+        self._programar_revision()
+
+    def destroy(self) -> None:
+        if self._revision_after is not None:
+            self.after_cancel(self._revision_after)
+            self._revision_after = None
+        self._firmas_activas.clear()
+        super().destroy()
 
     def _elegir_cer(self) -> None:
         ruta = filedialog.askopenfilename(parent=self, title="Seleccionar certificado e.firma", filetypes=[("Certificado SAT", "*.cer *.crt"), ("Todos los archivos", "*.*")])
@@ -165,10 +331,13 @@ class PantallaDescargas(ctk.CTkFrame):
         try:
             cliente, rfc = self._datos_cliente()
             cer, key, password = self._credenciales()
+            desde = SelectorFecha._parsear(self._desde.get())
+            hasta = SelectorFecha._parsear(self._hasta.get())
+            if desde is None or hasta is None:
+                raise ErrorDescargaSAT("Revisa las fechas Desde y Hasta. Usa DD/MM/AAAA o selecciónalas en el calendario.")
             filtro = FiltroDescarga(
                 rfc=rfc, direccion=self._direccion.get(),
-                fecha_inicial=datetime.strptime(self._desde.get().strip(), "%Y-%m-%d").date(),
-                fecha_final=datetime.strptime(self._hasta.get().strip(), "%Y-%m-%d").date(),
+                fecha_inicial=desde, fecha_final=hasta,
                 tipo_comprobante=TIPOS[self._tipo.get()],
             )
             filtro.validar()
@@ -201,14 +370,29 @@ class PantallaDescargas(ctk.CTkFrame):
             fiel = CredencialEFirma.cargar(cer, key, password)
             sat = ClienteDescargaSAT(fiel)
             try:
-                return sat.solicitar(filtro)
+                return sat.solicitar(filtro), fiel
             finally:
                 sat.cerrar()
 
-        self.app.ejecutar(trabajo, lambda r: self._presentar_solicitud(cliente, filtro, r), "Solicitando CFDI al SAT")
+        self.app.ejecutar(
+            trabajo, lambda resultado: self._presentar_solicitud(cliente, filtro, *resultado),
+            "Solicitando CFDI al SAT", al_error=self._presentar_error,
+        )
         self._password.set("")
 
-    def _presentar_solicitud(self, cliente: str, filtro: FiltroDescarga, respuesta: RespuestaSAT) -> None:
+    def _presentar_error(self, error: Exception) -> None:
+        from conxml.diagnostico import sanitizar_texto
+
+        mensaje = sanitizar_texto(str(error)) if isinstance(error, ErrorDescargaSAT) else (
+            "Falló la operación. Consulta el archivo de diagnóstico para ver más detalles."
+        )
+        self._estado_lbl.configure(text=f"No se completó la operación: {mensaje}")
+        messagebox.showerror("Descarga SAT", mensaje, parent=self)
+
+    def _presentar_solicitud(
+        self, cliente: str, filtro: FiltroDescarga, respuesta: RespuestaSAT,
+        fiel: CredencialEFirma | None = None,
+    ) -> None:
         if not respuesta.id_solicitud:
             messagebox.showerror("Descarga SAT", respuesta.mensaje or f"El SAT respondió con código {respuesta.cod_estatus or 'sin código'}.", parent=self)
             self._estado_lbl.configure(text="No se generó una solicitud")
@@ -223,6 +407,8 @@ class PantallaDescargas(ctk.CTkFrame):
             filas = catalogo.solicitudes_descarga_cliente(cliente)
         self._renderizar_historial(filas)
         self._estado_lbl.configure(text=f"Solicitud registrada: {respuesta.mensaje or respuesta.cod_estatus}")
+        if fiel is not None:
+            self._guardar_firma(fiel)
 
     def _verificar(self) -> None:
         seleccion = self._tabla.selection()
@@ -239,7 +425,6 @@ class PantallaDescargas(ctk.CTkFrame):
             datos = dict(fila)
             if datos["cliente"] != cliente:
                 raise ErrorDescargaSAT("La solicitud no corresponde al cliente activo.")
-            datos["paquetes"] = json.loads(datos.pop("paquetes_json") or "[]")
         except (ErrorDescargaSAT, ValueError) as exc:
             messagebox.showerror("Descarga SAT", str(exc), parent=self)
             return
@@ -255,49 +440,23 @@ class PantallaDescargas(ctk.CTkFrame):
                 raise ErrorDescargaSAT("La e.firma seleccionada no corresponde a esta solicitud.")
             sat = ClienteDescargaSAT(fiel)
             try:
-                respuesta = sat.verificar(datos["rfc"], datos["id_sat"])
-                copiados = 0
-                errores = 0
-                recuperada = bool(datos.get("recuperado"))
-                if respuesta.estado == 3 and not recuperada:
-                    archivos_boveda = []
-                    for paquete_id in respuesta.paquetes:
-                        zip_bytes = sat.descargar_paquete(datos["rfc"], paquete_id)
-                        guardado = guardar_paquete(zip_bytes, config, cliente, datos["rfc"], datos["id_sat"], paquete_id, modo=modo)
-                        copiados += 1 if guardado.zip_guardado else guardado.copiados
-                        errores += guardado.errores
-                        archivos_boveda.extend(guardado.archivos)
-                    insertados = 0
-                    if modo == "organizado":
-                        with Catalogo(self.app.db_path) as catalogo:
-                            importados = importar_carpetas(catalogo, archivos_boveda, cliente)
-                            insertados = importados.insertados
-                            errores += importados.errores
-                    return respuesta, copiados, errores, insertados, errores == 0
-                return respuesta, copiados, errores, 0, recuperada
+                return procesar_solicitud(sat, self.app.db_path, datos, config), fiel
             finally:
                 sat.cerrar()
 
-        self.app.ejecutar(trabajo, lambda resultado: self._presentar_verificacion(datos, resultado), "Consultando y recuperando CFDI")
+        def presentar(resultado):
+            seguimiento, fiel = resultado
+            self._presentar_verificacion(datos, seguimiento)
+            self._guardar_firma(fiel)
+
+        self.app.ejecutar(trabajo, presentar, "Consultando y recuperando CFDI", al_error=self._presentar_error)
         self._password.set("")
 
-    def _presentar_verificacion(self, datos: dict, resultado) -> None:
-        respuesta, copiados, errores, insertados, recuperada = resultado
-        mensaje = respuesta.mensaje
-        if datos.get("recuperado"):
-            mensaje = datos.get("mensaje") or mensaje
-        elif recuperada:
-            modo = "ZIP sin extraer" if datos.get("modo_guardado") == "zip" else "XML organizados"
-            mensaje = f"{mensaje} · {modo}: {datos.get('destino_guardado', '')}"
+    def _presentar_verificacion(self, datos: dict, resultado: ResultadoSeguimiento) -> None:
+        respuesta = resultado.respuesta
+        copiados, errores = resultado.copiados, resultado.errores
+        insertados, recuperada = resultado.insertados, resultado.recuperada
         with Catalogo(self.app.db_path) as catalogo:
-            catalogo.guardar_solicitud_descarga(
-                cliente=datos["cliente"], rfc=datos["rfc"], direccion=datos["direccion"],
-                fecha_inicial=datos["fecha_inicial"], fecha_final=datos["fecha_final"],
-                tipo_comprobante=datos["tipo_comprobante"], id_sat=datos["id_sat"],
-                cod_estatus=respuesta.cod_estatus, estado=respuesta.estado,
-                mensaje=mensaje, numero_cfdis=respuesta.numero_cfdis,
-                paquetes=respuesta.paquetes, recuperado=recuperada,
-            )
             filas = catalogo.solicitudes_descarga_cliente(datos["cliente"])
         self._renderizar_historial(filas)
         estado = ESTADOS.get(respuesta.estado, "Estado desconocido")
@@ -306,6 +465,8 @@ class PantallaDescargas(ctk.CTkFrame):
             texto = f"{estado}. Paquetes ZIP guardados: {copiados}. Sin extracción ni importación automática."
         if respuesta.estado == 3 and datos.get("recuperado"):
             texto = f"{estado}. Esta solicitud ya se había recuperado; no se volvió a descargar el paquete."
+        elif respuesta.estado == 3 and not recuperada:
+            texto = "Terminada. El SAT aún no entregó los paquetes; ConXml volverá a consultar."
         if errores:
             texto += f" XML con error: {errores}."
         self._estado_lbl.configure(text=texto)
@@ -316,13 +477,22 @@ class PantallaDescargas(ctk.CTkFrame):
                 admin._cargar_tabla()
 
     def _renderizar_historial(self, filas) -> None:
+        seleccion = set(self._tabla.selection())
+        self._estado_lbl.configure(
+            text=(f"{len(filas)} solicitudes de este cliente" if filas
+                  else "Aún no hay solicitudes para este cliente.")
+        )
         for iid in self._tabla.get_children():
             self._tabla.delete(iid)
         for fila in filas:
-            periodo = f"{fila['fecha_inicial']} a {fila['fecha_final']}"
+            desde = date.fromisoformat(fila['fecha_inicial']).strftime("%d/%m/%Y")
+            hasta = date.fromisoformat(fila['fecha_final']).strftime("%d/%m/%Y")
+            periodo = f"{desde} a {hasta}"
             estado = ESTADOS.get(fila["estado"], "Pendiente")
             self._tabla.insert(
                 "", "end", iid=fila["id_sat"],
                 values=(fila["id_sat"], fila["direccion"], periodo, estado,
                         fila["numero_cfdis"], fila["mensaje"] or fila["cod_estatus"]),
             )
+            if fila["id_sat"] in seleccion:
+                self._tabla.selection_set(fila["id_sat"])
