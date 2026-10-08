@@ -21,7 +21,10 @@ def app(tmp_path, monkeypatch):
     with Catalogo(tmp_path / 'catalogo.db') as cat:
         cat.crear_cliente('C1', 'Cliente de prueba', 'EKU9003173C9')
         importar_carpeta(cat, FIXTURES, 'C1')
-    root = ctk.CTk()
+    try:
+        root = ctk.CTk()
+    except tk.TclError as exc:
+        pytest.skip(f"La prueba visual requiere Tcl/Tk disponible en el sistema: {exc}")
     ventana = ConXmlApp(root, cliente_actual='C1')
     root.update_idletasks()
     yield ventana
