@@ -74,13 +74,17 @@ jobs:
           $zip = "build-artifact/ConXml-$env:CONXML_RELEASE_VERSION-windows-x64.zip"
           gh release create $tag $exe "$exe.sha256" $zip "$zip.sha256" --target $env:CONXML_BUILD_SHA --draft --title "ConXml $env:CONXML_RELEASE_VERSION" --notes "Instalador y paquete de actualización directa Windows x64. Conserva los datos locales."
           if ($LASTEXITCODE -ne 0) { throw "Falló la carga de la versión." }
-          $releaseId = gh api "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.tag_name == `"$tag`\") | .id"
+          $releases = gh api "repos/${{ github.repository }}/releases?per_page=100" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "No se pudieron consultar las Releases." }
+          $releaseId = ($releases | Where-Object { $_.tag_name -eq $tag } | Select-Object -First 1).id
           if (-not $releaseId) { throw "No se encontró el borrador de la versión." }
           $releaseId = $releaseId.Trim()
-          $assetExe = gh api "repos/${{ github.repository }}/releases/$releaseId" --jq '.assets[] | select(.name | endswith(".exe")) | .digest'
+          $release = gh api "repos/${{ github.repository }}/releases/$releaseId" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo consultar el borrador." }
+          $assetExe = ($release.assets | Where-Object { $_.name.EndsWith('.exe') } | Select-Object -First 1).digest
           $expectedExe = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
           if ($assetExe -ne "sha256:$expectedExe") { throw "Digest de instalador ausente o incorrecto; queda en borrador." }
-          $assetZip = gh api "repos/${{ github.repository }}/releases/$releaseId" --jq '.assets[] | select(.name | endswith(".zip")) | .digest'
+          $assetZip = ($release.assets | Where-Object { $_.name.EndsWith('.zip') } | Select-Object -First 1).digest
           $expectedZip = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
           if ($assetZip -ne "sha256:$expectedZip") { throw "Digest de ZIP ausente o incorrecto; queda en borrador." }
           $latest = gh api "repos/${{ github.repository }}/releases/latest" --jq .tag_name 2>$null
