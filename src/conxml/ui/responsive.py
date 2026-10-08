@@ -22,13 +22,11 @@ ALTURA_MIN_TABLA = 150
 MIN_ANCHO = 880
 MIN_ALTO = 600
 
-# Tamaño inicial deseado (lógico) antes de recortar a la pantalla disponible.
+# Tamaño inicial según el espacio disponible de pantalla (en unidades lógicas).
 ANCHO_INICIAL_OBJETIVO = 1280
 ALTO_INICIAL_OBJETIVO = 800
 ANCHO_INICIAL_MIN = 900
 ALTO_INICIAL_MIN = 620
-ANCHO_INICIAL_MAX = 1366
-ALTO_INICIAL_MAX = 860
 
 # Retardo del debounce del evento Configure (ms).
 RETARDO_DEBOUNCE_MS = 120
@@ -74,8 +72,11 @@ def tamano_inicial(ancho_pantalla: int, alto_pantalla: int, escalado: float = 1.
     sw_log = sw / esc
     sh_log = sh / esc
 
-    w = int(min(ANCHO_INICIAL_MAX, max(ANCHO_INICIAL_MIN, sw_log * 0.80)))
-    h = int(min(ALTO_INICIAL_MAX, max(ALTO_INICIAL_MIN, sh_log * 0.80)))
+    # En monitores amplios usamos más espacio desde el arranque. El límite
+    # anterior de 1366 px dejaba grandes franjas vacías en pantallas modernas;
+    # macOS tampoco aplica de forma consistente el estado Tk "zoomed".
+    w = int(max(ANCHO_INICIAL_MIN, sw_log * 0.96))
+    h = int(max(ALTO_INICIAL_MIN, sh_log * 0.94))
 
     # Margen lógico para bordes del SO / dock / barra de tareas.
     max_w = max(1, int(sw_log - 40))
@@ -83,11 +84,10 @@ def tamano_inicial(ancho_pantalla: int, alto_pantalla: int, escalado: float = 1.
     w = min(w, max_w)
     h = min(h, max_h)
 
-    # Objetivo preferente si cabe.
-    w = min(w, max(MIN_ANCHO, min(ANCHO_INICIAL_OBJETIVO, max_w)))
-    if sw_log >= ANCHO_INICIAL_OBJETIVO + 40:
-        w = max(w, min(ANCHO_INICIAL_OBJETIVO, max_w))
-    h = min(h, max(MIN_ALTO, min(ALTO_INICIAL_OBJETIVO, max_h)))
+    # En pantallas pequeñas conservamos un tamaño manejable; en las amplias
+    # dejamos que la interfaz ocupe casi toda el área útil.
+    w = min(w, max_w)
+    h = min(h, max_h)
     return (w, h)
 
 

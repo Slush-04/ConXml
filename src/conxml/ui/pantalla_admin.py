@@ -715,13 +715,13 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._orden_desc = False
 
         contenedor = ctk.CTkFrame(self, fg_color="transparent")
-        contenedor.pack(fill="both", expand=True, padx=32, pady=24)
+        contenedor.pack(fill="both", expand=True, padx=16, pady=16)
         contenedor.columnconfigure(1, weight=1)
         # La tabla siempre conserva al menos 150px de altura en modo compacto.
         contenedor.rowconfigure(4, weight=1, minsize=150)
         self._contenedor = contenedor
-        self._padx_normal, self._pady_normal = 32, 24
-        self._padx_compacto, self._pady_compacto = 12, 12
+        self._padx_normal, self._pady_normal = 16, 16
+        self._padx_compacto, self._pady_compacto = 8, 8
         self._ancho_compacto = False
         self._alto_compacto = False
         self._totales_colapsado_auto = False

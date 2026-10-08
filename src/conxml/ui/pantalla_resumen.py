@@ -14,7 +14,6 @@ from conxml.ui.widgets import (
     Insignia,
     Metrica,
     TarjetaAccion,
-    ajustar_ancho_disponible,
     texto_adaptable,
 )
 
@@ -37,8 +36,7 @@ class PantallaResumen(ctk.CTkFrame):
         self.botones: list = []
 
         self._contenedor = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        self._contenedor.pack(fill="both", expand=True, padx=32, pady=24)
-        ajustar_ancho_disponible(self._contenedor, self)
+        self._contenedor.pack(fill="both", expand=True, padx=16, pady=16)
         self._contenedor.columnconfigure(0, weight=1)
 
         self._encabezado = Encabezado(
@@ -78,9 +76,9 @@ class PantallaResumen(ctk.CTkFrame):
         """Márgenes compactos en laptop sin recrear widgets."""
         try:
             if ancho_compacto or alto_compacto:
-                self._contenedor.pack_configure(padx=12, pady=12)
+                self._contenedor.pack(padx=8, pady=8)
             else:
-                self._contenedor.pack_configure(padx=32, pady=24)
+                self._contenedor.pack(padx=16, pady=16)
         except Exception:
             pass
 

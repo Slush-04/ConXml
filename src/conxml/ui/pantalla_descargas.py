@@ -22,7 +22,7 @@ from conxml.ui import theme as th
 from conxml.ui.selector_fecha import SelectorFecha
 from conxml.ui.widgets import (
     BotonPrimario, BotonSecundario, Encabezado, Insignia, PanelCard,
-    BarraAdaptable, ajustar_ancho_disponible, texto_adaptable,
+    BarraAdaptable, texto_adaptable,
 )
 
 ESTADOS = {
@@ -41,8 +41,7 @@ class PantallaDescargas(ctk.CTkFrame):
         self._revision_after: str | None = None
         self._rfc_visible = ""
         self._contenedor = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        self._contenedor.pack(fill="both", expand=True, padx=32, pady=24)
-        ajustar_ancho_disponible(self._contenedor, self)
+        self._contenedor.pack(fill="both", expand=True, padx=16, pady=16)
         Encabezado(
             self._contenedor, "Descarga SAT",
             "Solicita CFDI por cliente y periodo; después consulta y recupera los paquetes del SAT.",
@@ -159,7 +158,7 @@ class PantallaDescargas(ctk.CTkFrame):
 
     def aplicar_modo_compacto(self, ancho_compacto: bool, alto_compacto: bool) -> None:
         compacto = ancho_compacto or alto_compacto
-        self._contenedor.pack_configure(padx=12 if compacto else 32, pady=12 if compacto else 24)
+        self._contenedor.pack(padx=8 if compacto else 16, pady=8 if compacto else 16)
 
     def al_mostrar(self) -> None:
         cliente = self.app.cliente_actual

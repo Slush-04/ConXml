@@ -102,6 +102,29 @@ def test_geometria_inicial_no_excede_pantalla(tmp_path, monkeypatch):
         _destruir(raiz)
 
 
+def test_pestanas_desplazables_conservan_ancho_al_cambiar_modo(tmp_path, monkeypatch):
+    raiz, app = _crear_app(tmp_path, monkeypatch)
+    try:
+        raiz.geometry("1451x922")
+        raiz.update()
+
+        for ancho, alto in ((900, 650), (1451, 922)):
+            app.aplicar_responsive(ancho, alto)
+            for clave in ("resumen", "descargas", "ajustes"):
+                app.navegar(clave)
+                raiz.update()
+                pantalla = app._pantallas[clave]
+                contenedor = pantalla._contenedor
+
+                # CTkScrollableFrame debe seguir administrado por su Canvas.
+                # pack_configure heredado puede sacar el contenido del Canvas
+                # y dejarlo angosto/centrado al cambiar el modo adaptable.
+                assert contenedor.winfo_manager() == "canvas"
+                assert contenedor._parent_frame.winfo_width() >= pantalla.winfo_width() - 40
+    finally:
+        _destruir(raiz)
+
+
 @pytest.mark.skipif(_ESCRITORIO_WINDOWS_CI, reason="El escritorio virtual de CI no admite la geometría física; validar en una pantalla Windows local.")
 def test_sidebar_compacto_y_recuperacion(tmp_path, monkeypatch):
     raiz, app = _crear_app(tmp_path, monkeypatch)

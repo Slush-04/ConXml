@@ -22,7 +22,7 @@ class PantallaClientes(ctk.CTkFrame):
         self._clientes: list[dict] = []
         self._busqueda = tk.StringVar()
         contenedor = ctk.CTkFrame(self, fg_color="transparent")
-        contenedor.pack(fill="both", expand=True, padx=32, pady=24)
+        contenedor.pack(fill="both", expand=True, padx=16, pady=16)
         contenedor.columnconfigure(0, weight=1)
         contenedor.rowconfigure(2, weight=1)
         self._contenedor = contenedor
@@ -108,8 +108,8 @@ class PantallaClientes(ctk.CTkFrame):
         self._vacio.place(relx=.5, rely=.5, anchor="center")
 
     def aplicar_modo_compacto(self, ancho_compacto: bool, alto_compacto: bool) -> None:
-        self._contenedor.pack_configure(padx=12 if (ancho_compacto or alto_compacto) else 32,
-                                        pady=12 if (ancho_compacto or alto_compacto) else 24)
+        self._contenedor.pack_configure(padx=8 if (ancho_compacto or alto_compacto) else 16,
+                                       pady=8 if (ancho_compacto or alto_compacto) else 16)
 
     def al_mostrar(self) -> None:
         self._cargar()

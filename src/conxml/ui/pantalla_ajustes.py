@@ -16,7 +16,7 @@ from conxml.respaldos import crear_respaldo, restaurar_respaldo
 from conxml.ui import theme as th
 from conxml.ui.widgets import (
     BotonPrimario, BotonSecundario, Encabezado, PanelCard, ResumenOperacion,
-    BarraAdaptable, ajustar_ancho_disponible, texto_adaptable,
+    BarraAdaptable, texto_adaptable,
 )
 
 
@@ -27,9 +27,8 @@ class PantallaAjustes(ctk.CTkFrame):
         self.botones: list = []
 
         contenedor = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        contenedor.pack(fill="both", expand=True, padx=32, pady=24)
+        contenedor.pack(fill="both", expand=True, padx=16, pady=16)
         self._contenedor = contenedor
-        ajustar_ancho_disponible(contenedor, self)
 
         Encabezado(
             contenedor,
@@ -179,9 +178,9 @@ class PantallaAjustes(ctk.CTkFrame):
         """Márgenes compactos en laptop sin recrear widgets."""
         try:
             if ancho_compacto or alto_compacto:
-                self._contenedor.pack_configure(padx=12, pady=12)
+                self._contenedor.pack(padx=8, pady=8)
             else:
-                self._contenedor.pack_configure(padx=32, pady=24)
+                self._contenedor.pack(padx=16, pady=16)
         except Exception:
             pass
 

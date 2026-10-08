@@ -33,7 +33,7 @@ class PantallaBoveda(ctk.CTkFrame):
         self._origen_externo = False
         self._dialogo_instrucciones = None
         contenedor = ctk.CTkFrame(self, fg_color="transparent")
-        contenedor.pack(fill="both", expand=True, padx=32, pady=24)
+        contenedor.pack(fill="both", expand=True, padx=16, pady=16)
         contenedor.columnconfigure(0, weight=1)
         contenedor.rowconfigure(3, weight=1)
         self._contenedor = contenedor
@@ -97,7 +97,7 @@ class PantallaBoveda(ctk.CTkFrame):
         self._detalles_usados = False; self.al_alternar_detalles(self.app.detalles_visibles)
 
     def aplicar_modo_compacto(self, ancho_compacto: bool, alto_compacto: bool) -> None:
-        self._contenedor.pack_configure(padx=12 if (ancho_compacto or alto_compacto) else 32, pady=12 if (ancho_compacto or alto_compacto) else 24)
+        self._contenedor.pack_configure(padx=8 if (ancho_compacto or alto_compacto) else 16, pady=8 if (ancho_compacto or alto_compacto) else 16)
 
     def al_alternar_detalles(self, visible: bool) -> None:
         if visible and self._detalles_usados: self._resumen.grid()
