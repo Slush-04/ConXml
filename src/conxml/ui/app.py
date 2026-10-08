@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import queue
+import logging
 import sys
 import threading
 import traceback
@@ -801,6 +802,8 @@ class ConXmlApp(ctk.CTkFrame):
 
 def main() -> None:
     registrar_inicio("GUI")
+    logger = logging.getLogger("conxml")
+    logger.info("Preparando instancia de interfaz")
     mutex = None
     if sys.platform == "win32":
         # Mismo mutex que el instalador: evita escribir datos con dos instancias
@@ -830,12 +833,14 @@ def main() -> None:
         if not adquirido:
             mostrar_error_fatal('ConXml', 'ConXml ya está abierto. Cierra la otra ventana antes de continuar.')
             return
+        logger.info("Mutex de aplicación adquirido")
         try:
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except Exception:
             pass
 
     try:
+        logger.info("Configurando tema y creando ventana principal")
         th.configurar_ctk()
         raiz = ctk.CTk()
         try:
@@ -850,10 +855,12 @@ def main() -> None:
             pass
         raiz.configure(fg_color=th.FONDO)
         _aplicar_icono(raiz)
-        # La selección de cliente es la primera ventana. La ventana principal se
-        # construye después de seleccionar para que siempre arranque con contexto.
-        raiz.withdraw()
+        logger.info("Ventana principal creada")
+        # La ventana raíz también se usa como selector inicial. Mantenerla visible
+        # evita depender de un Toplevel transitorio cuyo padre está oculto, estado
+        # que puede dejar el proceso vivo sin una ventana en algunos equipos.
         try:
+            logger.info("Preparando carpetas locales")
             Config().inicializar()
         except OSError as exc:
             messagebox.showerror('Datos de ConXml', f'No se pudieron preparar las carpetas de datos:\n{exc}', parent=raiz)
@@ -861,17 +868,37 @@ def main() -> None:
             return
 
         def abrir_programa(clave: str) -> None:
+            selector_inicial = getattr(raiz, "_selector_inicial", None)
+            if selector_inicial is not None:
+                try:
+                    selector_inicial.destroy()
+                except tk.TclError:
+                    pass
+                raiz._selector_inicial = None
             raiz.deiconify()
+            logger.info("Construyendo interfaz principal")
             raiz._conxml_app = ConXmlApp(raiz, cliente_actual=clave)
 
+        logger.info("Consultando cliente de inicio")
         cliente = estado_local.cargar().get('sesion', {}).get('cliente')
         with Catalogo(Config().db_path) as catalogo:
             existe = bool(cliente and catalogo.obtener_cliente(cliente))
         if existe:
+            logger.info("Cliente guardado encontrado; abriendo interfaz principal")
             abrir_programa(cliente)
         else:
-            selector = _mostrar_selector_clientes(raiz, abrir_programa, Config().db_path, on_close=raiz.destroy)
-            raiz._selector_clientes = selector
+            logger.info("Sin cliente de inicio; mostrando selector en ventana principal")
+            raiz.title("ConXml — Seleccionar cliente")
+            raiz.geometry("900x650")
+            raiz.minsize(760, 520)
+            raiz.protocol("WM_DELETE_WINDOW", raiz.destroy)
+            selector = PantallaClientes(
+                raiz, app=None, on_selected=abrir_programa, db_path=Config().db_path
+            )
+            selector.pack(fill="both", expand=True)
+            selector.al_mostrar()
+            raiz._selector_inicial = selector
+        logger.info("Iniciando ciclo de eventos de Tk")
         raiz.mainloop()
     except Exception as exc:
         mostrar_error_fatal("Error al iniciar ConXml", f"Fallo durante la inicialización de la interfaz:\n{exc}")
