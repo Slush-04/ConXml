@@ -68,13 +68,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "v$env:CONXML_RELEASE_VERSION"
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) { throw "La versión ya existe; no sobrescribir una publicación." }
           $exe = "build-artifact/installer/ConXml-Setup-$env:CONXML_RELEASE_VERSION-windows-x64.exe"
           $zip = "build-artifact/ConXml-$env:CONXML_RELEASE_VERSION-windows-x64.zip"
-          gh release create $tag $exe "$exe.sha256" $zip "$zip.sha256" --target $env:CONXML_BUILD_SHA --draft --title "ConXml $env:CONXML_RELEASE_VERSION" --notes "Instalador y paquete de actualización directa Windows x64. Conserva los datos locales."
-          if ($LASTEXITCODE -ne 0) { throw "Falló la carga de la versión." }
-          $releases = gh api "repos/${{ github.repository }}/releases?per_page=100" | ConvertFrom-Json
+          $releasesBefore = gh api "repos/${{ github.repository }}/releases?per_page=100" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "No se pudieron consultar las Releases." }
+          $existingRelease = $releasesBefore | Where-Object { $_.tag_name -eq $tag } | Select-Object -First 1
+          if ($existingRelease) {
+            if (-not $existingRelease.draft) { throw "La versión ya está publicada; no sobrescribirla." }
+            if ($existingRelease.target_commitish -ne $env:CONXML_BUILD_SHA) { throw "El borrador pertenece a otra compilación." }
+          } else {
+            gh release create $tag $exe "$exe.sha256" $zip "$zip.sha256" --target $env:CONXML_BUILD_SHA --draft --title "ConXml $env:CONXML_RELEASE_VERSION" --notes "Instalador y paquete de actualización directa Windows x64. Conserva los datos locales."
+            if ($LASTEXITCODE -ne 0) { throw "Falló la carga de la versión." }
+          }
           if ($LASTEXITCODE -ne 0) { throw "No se pudieron consultar las Releases." }
           $releaseId = ($releases | Where-Object { $_.tag_name -eq $tag } | Select-Object -First 1).id
           if (-not $releaseId) { throw "No se encontró el borrador de la versión." }
