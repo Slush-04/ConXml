@@ -469,10 +469,10 @@ def test_encabezados_envuelven_y_margenes_compactos(tmp_path, monkeypatch):
 
         app.aplicar_responsive(1400, 900)
         raiz.update_idletasks()
-        assert int(pantalla._contenedor.pack_info()["padx"]) == 32
+        assert int(pantalla._contenedor.pack_info()["padx"]) == 16
         app.aplicar_responsive(900, 650)
         raiz.update_idletasks()
-        assert int(pantalla._contenedor.pack_info()["padx"]) == 12
+        assert int(pantalla._contenedor.pack_info()["padx"]) == 8
     finally:
         _destruir(raiz)
 

@@ -94,8 +94,16 @@ def test_vista_previa_local_pagina_y_guarda(app, tmp_path, monkeypatch):
 def test_cierre_espera_respaldo_y_guarda_sesion(app, tmp_path):
     app.navegar('nomina')
     app.master.after(50, app._al_cerrar)
-    app.master.after(8000, app.master.destroy)
-    app.master.mainloop()
+    timeout = app.master.after(30000, app.master.quit)
+    try:
+        # CTk.mainloop() consulta wm_state después de regresar; el cierre
+        # normal destruye la ventana y en Windows puede provocar TclError.
+        tk.Tk.mainloop(app.master)
+    finally:
+        try:
+            app.master.after_cancel(timeout)
+        except tk.TclError:
+            pass
     respaldos = list((tmp_path / 'respaldos').glob('auto_*.zip'))
     assert len(respaldos) == 1
     with zipfile.ZipFile(respaldos[0]) as z:
