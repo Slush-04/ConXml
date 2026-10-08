@@ -74,6 +74,9 @@ def test_barra_refluye_y_conserva_controles(interfaz):
     root.update_idletasks()
     assert len({b.winfo_y() for b in botones}) == 1
     barra.configure(width=260)
+    # update_idletasks() does not dispatch Configure events on every platform.
+    # Generate the resize event explicitly so the test stays deterministic.
+    barra.event_generate("<Configure>", width=260, height=barra.winfo_height())
     root.update_idletasks()
     assert len({b.winfo_y() for b in botones}) == 2, (barra.winfo_width(), [(b.winfo_reqwidth(), b.winfo_width(), b.winfo_x(), b.winfo_y()) for b in botones], barra._distribucion)
     assert all(b.winfo_y() + b.winfo_height() <= barra.winfo_height() for b in botones)
