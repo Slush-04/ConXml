@@ -78,7 +78,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "No se pudieron consultar las Releases." }
           $releaseId = ($releases | Where-Object { $_.tag_name -eq $tag } | Select-Object -First 1).id
           if (-not $releaseId) { throw "No se encontró el borrador de la versión." }
-          $releaseId = $releaseId.Trim()
           $release = gh api "repos/${{ github.repository }}/releases/$releaseId" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw "No se pudo consultar el borrador." }
           $assetExe = ($release.assets | Where-Object { $_.name.EndsWith('.exe') } | Select-Object -First 1).digest
