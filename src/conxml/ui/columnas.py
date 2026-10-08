@@ -104,6 +104,7 @@ class DialogoColumnas(ctk.CTkToplevel):
         super().__init__(parent)
         self.title(f"Columnas visibles — {titulo}")
         self.geometry("430x540")
+        self.minsize(400, 360)
         self.configure(fg_color=th.FONDO)
         self.transient(parent.winfo_toplevel())
         self.after(60, self.grab_set)
@@ -135,10 +136,11 @@ class DialogoColumnas(ctk.CTkToplevel):
 
         botones = ctk.CTkFrame(self, fg_color="transparent")
         botones.pack(fill="x", padx=16, pady=(0, 16))
-        BotonSecundario(botones, "Todas", self._marcar_todas).pack(side="left")
-        BotonSecundario(botones, "Ninguna", self._marcar_ninguna).pack(side="left", padx=(8, 0))
-        BotonSecundario(botones, "Cancelar", self.destroy).pack(side="right")
-        BotonPrimario(botones, "Aplicar", self._aplicar).pack(side="right", padx=(0, 8))
+        botones.columnconfigure((0, 1), weight=1)
+        BotonSecundario(botones, "Todas", self._marcar_todas).grid(row=0, column=0, sticky="ew", padx=(0, 4), pady=(0, 8))
+        BotonSecundario(botones, "Ninguna", self._marcar_ninguna).grid(row=0, column=1, sticky="ew", padx=(4, 0), pady=(0, 8))
+        BotonSecundario(botones, "Cancelar", self.destroy).grid(row=1, column=0, sticky="ew", padx=(0, 4))
+        BotonPrimario(botones, "Aplicar", self._aplicar).grid(row=1, column=1, sticky="ew", padx=(4, 0))
 
     def _marcar_todas(self) -> None:
         for var in self._vars.values():

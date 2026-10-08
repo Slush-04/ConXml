@@ -282,8 +282,7 @@ def test_columnas_compartido_con_acciones_y_sin_anadir(tmp_path, monkeypatch):
         assert pantalla._barra_tabla.winfo_manager() == "grid"
         assert set(pantalla._filtros) == {"uuid", "rfc", "serie", "folio"}
         assert pantalla._btn_columnas.winfo_parent() == str(pantalla._marco_acciones)
-        assert pantalla._fila_carpeta._btn_secundario is None
-        assert pantalla._fila_carpeta._btn_principal.winfo_manager() != ""
+        assert not hasattr(pantalla, "_btn_leer")
         assert pantalla._btn_columnas.winfo_height() <= 32
         assert pantalla._btn_validar.winfo_height() <= 34
         assert pantalla._btn_exportar.winfo_height() <= 34
@@ -291,13 +290,13 @@ def test_columnas_compartido_con_acciones_y_sin_anadir(tmp_path, monkeypatch):
         _destruir(raiz)
 
 
-def test_baja_altura_oculta_registro_y_colapsa_totales(tmp_path, monkeypatch):
+def test_baja_altura_oculta_detalles_y_colapsa_totales(tmp_path, monkeypatch):
     raiz, app = _crear_app(tmp_path, monkeypatch)
     try:
         app.navegar("admin40")
         raiz.update_idletasks()
         pantalla = app._pantallas["admin40"]
-        # Estado amplio: registro visible y totales expandidos.
+        # Estado amplio: detalles de operación visibles y totales expandidos.
         app.aplicar_responsive(1400, 950)
         app.mostrar_detalles(True, forzar=True)
         pantalla.fijar_totales_colapsados(False)
@@ -305,14 +304,12 @@ def test_baja_altura_oculta_registro_y_colapsa_totales(tmp_path, monkeypatch):
         assert app.detalles_visibles is True
         assert pantalla.totales_colapsados is False
 
-        # Poca altura: se oculta el registro y se colapsan los totales.
+        # Poca altura: se ocultan detalles y se colapsan los totales.
         app.aplicar_responsive(1200, 650)
         raiz.update_idletasks()
         assert app.baja_altura is True
         assert app.detalles_visibles is False
         assert pantalla.totales_colapsados is True
-        # Controles visibles para volver a mostrar.
-        assert app._btn_detalles.winfo_manager() != ""
         assert pantalla._totales_panel._btn_totales.winfo_manager() != ""
 
         # El usuario puede volver a mostrarlos manualmente.
@@ -322,7 +319,7 @@ def test_baja_altura_oculta_registro_y_colapsa_totales(tmp_path, monkeypatch):
         assert app.detalles_visibles is True
         assert pantalla.totales_colapsados is False
 
-        # Operar en poca altura no reabre el registro involuntariamente.
+        # Operar en poca altura no reabre los detalles involuntariamente.
         # Reingresar a compacto desde amplio para reactivar el auto-ocultado.
         app.aplicar_responsive(1400, 950)
         raiz.update_idletasks()
@@ -332,7 +329,7 @@ def test_baja_altura_oculta_registro_y_colapsa_totales(tmp_path, monkeypatch):
         pantalla._mostrar_detalles_operacion()
         raiz.update_idletasks()
         assert app.detalles_visibles is False
-        # La operación queda registrada sin reabrir paneles automáticamente.
+        # La operación queda marcada sin reabrir paneles automáticamente.
         assert pantalla._detalles_usados is True
     finally:
         _destruir(raiz)
@@ -391,8 +388,7 @@ def test_tabla_altura_minima_y_botones_visibles(tmp_path, monkeypatch, size, mod
         assert pantalla._scroll_x.winfo_manager() != ""
         assert pantalla._scroll_y.winfo_manager() != ""
         # Botones dentro del contenedor (no recortados).
-        for btn in (pantalla._btn_leer, pantalla._btn_validar,
-                    pantalla._btn_exportar, pantalla._btn_columnas):
+        for btn in (pantalla._btn_validar, pantalla._btn_exportar, pantalla._btn_columnas):
             x = btn.winfo_rootx() - raiz.winfo_rootx()
             y = btn.winfo_rooty() - raiz.winfo_rooty()
             w = btn.winfo_width()

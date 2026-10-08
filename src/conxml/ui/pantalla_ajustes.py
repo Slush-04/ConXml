@@ -14,7 +14,10 @@ from conxml import estado_local
 from conxml.archivos import abrir_local
 from conxml.respaldos import crear_respaldo, restaurar_respaldo
 from conxml.ui import theme as th
-from conxml.ui.widgets import BotonPrimario, BotonSecundario, Encabezado, PanelCard, ResumenOperacion
+from conxml.ui.widgets import (
+    BotonPrimario, BotonSecundario, Encabezado, PanelCard, ResumenOperacion,
+    BarraAdaptable, ajustar_ancho_disponible, texto_adaptable,
+)
 
 
 class PantallaAjustes(ctk.CTkFrame):
@@ -26,10 +29,11 @@ class PantallaAjustes(ctk.CTkFrame):
         contenedor = ctk.CTkScrollableFrame(self, fg_color="transparent")
         contenedor.pack(fill="both", expand=True, padx=32, pady=24)
         self._contenedor = contenedor
+        ajustar_ancho_disponible(contenedor, self)
 
         Encabezado(
             contenedor,
-            "Configuración y Ajustes",
+            "Configuración",
             "Administra el comportamiento de lectura, almacenamiento y mantenimiento de la base de datos.",
         ).pack(fill="x", pady=(0, 20))
 
@@ -42,7 +46,7 @@ class PantallaAjustes(ctk.CTkFrame):
 
         ctk.CTkLabel(
             content_op,
-            text="PREFERENCIAS DE LECTURA Y CATÁLOGO",
+            text="Lectura y catálogo",
             text_color=th.TEXTO_SECUNDARIO,
             font=(th.FUENTE, th.TAM_NOTA, "bold"),
         ).pack(anchor="w", pady=(0, 10))
@@ -77,8 +81,9 @@ class PantallaAjustes(ctk.CTkFrame):
         frame_btn.pack(anchor="w")
 
         self.btn_vaciar = BotonSecundario(
-            frame_btn, "🗑️ Vaciar todo el catálogo ahora", self._confirmar_limpieza
+            frame_btn, "Vaciar catálogo…", self._confirmar_limpieza
         )
+        self.btn_vaciar.configure(text_color=th.ROJO, hover_color=th.ROJO_FONDO)
         self.btn_vaciar.pack(side="left")
 
         # Tarjeta 2: Estado de la base de datos
@@ -90,7 +95,7 @@ class PantallaAjustes(ctk.CTkFrame):
 
         ctk.CTkLabel(
             content_info,
-            text="INFORMACIÓN DEL ALMACENAMIENTO",
+            text="Almacenamiento",
             text_color=th.TEXTO_SECUNDARIO,
             font=(th.FUENTE, th.TAM_NOTA, "bold"),
         ).pack(anchor="w", pady=(0, 8))
@@ -117,15 +122,15 @@ class PantallaAjustes(ctk.CTkFrame):
         card_respaldo.pack(fill='x', pady=(0, 16))
         contenido = ctk.CTkFrame(card_respaldo, fg_color='transparent')
         contenido.pack(fill='x', padx=20, pady=18)
-        ctk.CTkLabel(contenido, text='RESPALDOS Y SESIÓN LOCAL', font=(th.FUENTE, th.TAM_BODY, 'bold')).pack(anchor='w')
+        ctk.CTkLabel(contenido, text='Respaldos y sesión local', font=(th.FUENTE, th.TAM_BODY, 'bold')).pack(anchor='w')
         ctk.CTkLabel(contenido, text='Clientes, catálogo, XML, solicitudes SAT, preferencias y última sesión se conservan en este equipo.\nLos respaldos incluyen los XML importados desde carpetas externas que sigan disponibles.', wraplength=690, justify='left').pack(anchor='w', pady=8)
         self.respaldo_al_cerrar = tk.BooleanVar(value=estado_local.cargar().get('respaldo_al_cerrar', True))
-        ctk.CTkCheckBox(contenido, text='Crear respaldo local al cerrar (conservar los últimos 10 automáticos)', variable=self.respaldo_al_cerrar, command=lambda: estado_local.guardar({'respaldo_al_cerrar': self.respaldo_al_cerrar.get()})).pack(anchor='w', pady=8)
-        acciones = ctk.CTkFrame(contenido, fg_color='transparent')
+        ctk.CTkCheckBox(contenido, text='Respaldar al cerrar · conservar los últimos 10', variable=self.respaldo_al_cerrar, command=lambda: estado_local.guardar({'respaldo_al_cerrar': self.respaldo_al_cerrar.get()})).pack(anchor='w', pady=8)
+        acciones = BarraAdaptable(contenido)
         acciones.pack(fill='x', pady=(8, 0))
         for texto, comando in [('Crear respaldo…', self._crear_respaldo), ('Restaurar respaldo…', self._restaurar_respaldo), ('Abrir datos locales', lambda: abrir_local(Config().base))]:
             boton = BotonSecundario(acciones, texto, comando)
-            boton.pack(side='left', padx=(0, 8))
+            acciones.agregar(boton)
             self.botones.append(boton)
         self.botones.append(self.btn_vaciar)
 
@@ -133,7 +138,7 @@ class PantallaAjustes(ctk.CTkFrame):
         card_descargas.pack(fill="x", pady=(0, 16))
         contenido_sat = ctk.CTkFrame(card_descargas, fg_color="transparent")
         contenido_sat.pack(fill="x", padx=20, pady=18)
-        ctk.CTkLabel(contenido_sat, text="DESTINO DE DESCARGAS SAT", font=(th.FUENTE, th.TAM_BODY, "bold")).pack(anchor="w")
+        ctk.CTkLabel(contenido_sat, text="Destino de descargas SAT", font=(th.FUENTE, th.TAM_BODY, "bold")).pack(anchor="w")
         self._modos_sat = {"Organizar XML e importar al visor": "organizado", "Conservar ZIP sin extraer": "zip"}
         self._modo_sat = tk.StringVar()
         self._carpeta_sat = tk.StringVar()
@@ -152,6 +157,11 @@ class PantallaAjustes(ctk.CTkFrame):
         self._estado_destino_sat = ctk.CTkLabel(contenido_sat, text="", wraplength=650, justify="left", anchor="w", text_color=th.TEXTO_SECUNDARIO)
         self._estado_destino_sat.pack(fill="x")
         self._cargar_destino_sat()
+        for panel in (content_op, content_info, contenido, contenido_sat):
+            for widget in panel.winfo_children():
+                if isinstance(widget, ctk.CTkLabel):
+                    texto_adaptable(widget, panel, margen=8)
+        self.chk_limpiar.configure(text="Sustituir el catálogo al leer nuevas carpetas")
 
         # Notificador de estado (sin espacio reservado hasta el primer uso)
         self.resumen = ResumenOperacion(contenedor)

@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import queue
+import logging
 import sys
 import threading
 import traceback
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox, scrolledtext
+from tkinter import messagebox
 
 import customtkinter as ctk
 from PIL import Image
@@ -15,8 +16,8 @@ from PIL import Image
 from conxml.boveda import inicializar_boveda
 from conxml.catalog.db import Catalogo
 from conxml.config import Config
-from conxml.diagnostico import registrar_inicio, mostrar_error_fatal, obtener_ruta_log
-from conxml import estado_local
+from conxml import __version__, estado_local
+from conxml.diagnostico import registrar_inicio, mostrar_error_fatal
 from conxml.respaldos import respaldo_automatico
 from conxml.ui import responsive as resp
 from conxml.ui import theme as th
@@ -31,19 +32,19 @@ from conxml.ui.pantalla_boveda import PantallaBoveda
 from conxml.ui.pantalla_clientes import PantallaClientes
 from conxml.ui.pantalla_descargas import PantallaDescargas
 from conxml.ui.pantalla_resumen import PantallaResumen
-from conxml.ui.widgets import PanelCard
+from conxml.ui.iconos import icono
 from conxml.ui.actualizaciones import Actualizaciones
 
 SECCIONES = [
-    ("admin_xml", "ADMINISTRACIÓN XML", [
-        ("descargas", "⬇ Descarga de XML"),
-        ("admin40", "📄 XML 4.0 (Ingr/Egr/Tras)"),
-        ("pagos", "💸 Conciliación de Pagos"),
-        ("nomina", "👔 Recibos de Nómina"),
+    ("admin_xml", "COMPROBANTES", [
+        ("descargas", "Descargas SAT"),
+        ("admin40", "XML 4.0"),
+        ("pagos", "Conciliación de pagos"),
+        ("nomina", "Recibos de nómina"),
     ]),
     ("sistema", "SISTEMA", [
-        ("clientes", "👥 Cambiar cliente"),
-        ("ajustes", "⚙️ Configuración y Ajustes"),
+        ("clientes", "Cambiar cliente"),
+        ("ajustes", "Configuración"),
     ]),
 ]
 
@@ -51,14 +52,14 @@ NOMBRE_ICONO = "logo_conxml"
 
 # Textos completos y breves del sidebar (compacto legible, no solo emojis).
 TEXTO_NAV_COMPLETO = {
-    "descargas": "⬇ Descarga de XML",
-    "resumen": "📊 Resumen",
-    "admin40": "📄 XML 4.0 (Ingr/Egr/Tras)",
-    "pagos": "💸 Conciliación de Pagos",
-    "nomina": "👔 Recibos de Nómina",
-    "ajustes": "⚙️ Configuración y Ajustes",
+    "descargas": "Descargas SAT",
+    "resumen": "Resumen",
+    "admin40": "XML 4.0",
+    "pagos": "Conciliación de pagos",
+    "nomina": "Recibos de nómina",
+    "ajustes": "Configuración",
     "clientes": "Cambiar cliente",
-    "boveda": "🗄️ Bóveda",
+    "boveda": "Bóveda de XML",
 }
 TEXTO_NAV_BREVE = {
     "descargas": "Descargas",
@@ -71,12 +72,12 @@ TEXTO_NAV_BREVE = {
     "boveda": "Bóveda",
 }
 TITULO_GRUPO_COMPLETO = {
-    "admin_xml": "ADMINISTRACIÓN XML",
+    "admin_xml": "COMPROBANTES",
     "sistema": "SISTEMA",
 }
 TITULO_GRUPO_BREVE = {
     "admin_xml": "XML",
-    "sistema": "SIST",
+    "sistema": "SISTEMA",
 }
 
 
@@ -110,6 +111,8 @@ def _aplicar_icono(raiz: ctk.CTk) -> None:
 
 class ConXmlApp(ctk.CTkFrame):
     def __init__(self, master: ctk.CTk, cliente_actual: str | None = None) -> None:
+        th.configurar_ctk()
+        th.configurar_tablas(master)
         super().__init__(master, fg_color=th.FONDO, corner_radius=0)
         self.master = master
         try:
@@ -126,11 +129,11 @@ class ConXmlApp(ctk.CTkFrame):
         self._cola: queue.Queue = queue.Queue()
         self._ocupada = False
         sesion = estado_local.cargar().get('sesion', {})
-        self._detalles_visibles = sesion.get('detalles_visibles', True)
+        self._detalles_visibles = sesion.get('detalles_visibles', False)
         # Estado adaptable (no recrea tablas ni pierde selección/datos).
         self._ancho_compacto = False
         self._alto_compacto = False
-        self._registro_oculto_auto = False
+        self._detalles_ocultos_por_altura = False
         self._resize_after: str | None = None
         self._sidebar_visible = True
         self.cliente_actual: str | None = cliente_actual
@@ -163,7 +166,7 @@ class ConXmlApp(ctk.CTkFrame):
             corner_radius=0,
             border_width=0,
         )
-        self._panel_lateral.grid(row=1, column=0, sticky="nsew", rowspan=2)
+        self._panel_lateral.grid(row=1, column=0, sticky="nsew")
         self._panel_lateral.grid_propagate(False)
 
         self._cabecera_lateral = ctk.CTkFrame(self, width=resp.ANCHO_SIDEBAR,
@@ -202,7 +205,7 @@ class ConXmlApp(ctk.CTkFrame):
         self._marco_cliente.pack(fill="x", padx=10, pady=(0, 14))
         ctk.CTkLabel(
             self._marco_cliente, text="CLIENTE ACTIVO", text_color=th.SIDEBAR_TEXTO,
-            font=(th.FUENTE, 9, "bold"), anchor="w",
+            font=(th.FUENTE, th.TAM_NOTA, "bold"), anchor="w",
         ).pack(anchor="w", padx=10, pady=(7, 0))
         self._lbl_cliente = ctk.CTkLabel(
             self._marco_cliente, text="Selecciona un cliente",
@@ -227,7 +230,7 @@ class ConXmlApp(ctk.CTkFrame):
         resumen_indicator.grid(row=0, column=0, sticky="ns", padx=(4, 0), pady=1)
 
         boton_resumen = self._crear_boton_nav(
-            self._nav, "📊 Resumen", lambda: self.navegar("resumen")
+            self._nav, "Resumen", lambda: self.navegar("resumen")
         )
         boton_resumen.grid(row=0, column=1, sticky="ew", padx=(0, 6), pady=1)
         self._botones["resumen"] = boton_resumen
@@ -237,7 +240,7 @@ class ConXmlApp(ctk.CTkFrame):
             self._nav, width=4, height=32, fg_color="transparent", corner_radius=2
         )
         boveda_indicator.grid(row=1, column=0, sticky="ns", padx=(4, 0), pady=1)
-        boton_boveda = self._crear_boton_nav(self._nav, "🗄️ Bóveda", lambda: self.navegar("boveda"))
+        boton_boveda = self._crear_boton_nav(self._nav, "Bóveda de XML", lambda: self.navegar("boveda"))
         boton_boveda.grid(row=1, column=1, sticky="ew", padx=(0, 6), pady=1)
         self._botones["boveda"] = boton_boveda
         self._indicadores["boveda"] = boveda_indicator
@@ -283,10 +286,18 @@ class ConXmlApp(ctk.CTkFrame):
                 "titulo": titulo,
             }
 
+        for clave, boton in self._botones.items():
+            boton.configure(image=icono(clave, th.SIDEBAR_TEXTO), compound="left", border_spacing=10)
+
         # Información de Base de Datos en el pie del Sidebar
         marco_bd = ctk.CTkFrame(self._panel_lateral, fg_color="transparent")
         marco_bd.pack(fill="x", side="bottom", padx=16, pady=16)
         self._marco_bd = marco_bd
+        self._lbl_version = ctk.CTkLabel(
+            marco_bd, text=f"Versión {__version__}",
+            text_color=th.SIDEBAR_TEXTO, font=(th.FUENTE, th.TAM_NOTA, "bold"),
+        )
+        self._lbl_version.pack(anchor="w", pady=(0, 10))
         self._lbl_db_titulo = ctk.CTkLabel(
             marco_bd, text="Carpeta de datos",
             text_color=th.SIDEBAR_TEXTO, font=(th.FUENTE, th.TAM_NOTA),
@@ -317,7 +328,8 @@ class ConXmlApp(ctk.CTkFrame):
         # El control permanece en la cabecera lateral al contraer la navegación.
         self._btn_sidebar = ctk.CTkButton(
             self._cabecera_lateral,
-            text="☰",
+            text="",
+            image=icono("menu", th.SIDEBAR_TEXTO_ACTIVO),
             width=36,
             height=30,
             fg_color="transparent",
@@ -329,49 +341,6 @@ class ConXmlApp(ctk.CTkFrame):
             command=self.alternar_sidebar,
         )
         self._btn_sidebar.pack(side="right", padx=8)
-
-        # Consola de Registro inferior (ocultable con "Ocultar detalles")
-        self._barra = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
-        self._barra.grid(row=2, column=1, sticky="ew", padx=24, pady=(0, 16))
-
-        cabecera_barra = ctk.CTkFrame(self._barra, fg_color="transparent")
-        cabecera_barra.pack(side="top", fill="x", pady=(0, 6))
-
-        self._lbl_registro = ctk.CTkLabel(
-            cabecera_barra, text="Registro de actividad",
-            text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA),
-        )
-        self._lbl_registro.pack(side="left")
-
-        self._btn_detalles = ctk.CTkButton(
-            cabecera_barra, text="Ocultar detalles  ▾", width=160, height=26,
-            fg_color="transparent", hover_color=th.FONDO_ENTRADA,
-            text_color=th.TEXTO_SECUNDARIO, corner_radius=th.RADIO_GRUPO,
-            font=(th.FUENTE, th.TAM_NOTA, "bold"),
-            command=self.alternar_detalles,
-        )
-        self._btn_detalles.pack(side="right")
-
-        self.marco_consola = PanelCard(
-            self._barra,
-            fondo=th.FONDO_TARJETA,
-            border_width=1,
-            border_color=th.BORDE,
-            corner_radius=th.RADIO_PANEL,
-        )
-        self.marco_consola.pack(side="top", fill="both", expand=True)
-
-        self._registro = scrolledtext.ScrolledText(
-            self.marco_consola, height=5, wrap="word", state="disabled",
-            background=th.FONDO_ENTRADA, foreground=th.TEXTO,
-            insertbackground=th.TEXTO, font=(th.FUENTE_MONO, 9),
-            bd=0, highlightthickness=0
-        )
-        self._registro.pack(fill="both", expand=True, padx=8, pady=6)
-
-        self._registro.tag_configure("comando", foreground=th.PRIMARIO, font=(th.FUENTE_MONO, 9, "bold"))
-        self._registro.tag_configure("error", foreground=th.ROJO)
-        self._registro.tag_configure("detalle", foreground=th.TEXTO_SECUNDARIO)
 
         master.protocol("WM_DELETE_WINDOW", self._al_cerrar)
         self._poll_after = self.after(80, self._procesar_cola)
@@ -403,7 +372,7 @@ class ConXmlApp(ctk.CTkFrame):
             anchor="w",
             corner_radius=th.RADIO_GRUPO,
             font=(th.FUENTE, th.TAM_BODY),
-            height=32,
+            height=38,
         )
         return boton
 
@@ -445,6 +414,7 @@ class ConXmlApp(ctk.CTkFrame):
         for k, boton in self._botones.items():
             boton.configure(
                 fg_color="transparent", text_color=th.SIDEBAR_TEXTO,
+                image=icono(k, th.SIDEBAR_TEXTO),
                 font=(th.FUENTE, th.TAM_BODY),
             )
             if k in self._indicadores:
@@ -453,6 +423,7 @@ class ConXmlApp(ctk.CTkFrame):
         if clave in self._botones:
             self._botones[clave].configure(
                 fg_color=th.SIDEBAR_HOVER, text_color=th.SIDEBAR_TEXTO_ACTIVO,
+                image=icono(clave, th.SIDEBAR_TEXTO_ACTIVO),
                 font=(th.FUENTE, th.TAM_BODY, "bold"),
             )
             if clave in self._indicadores:
@@ -547,26 +518,14 @@ class ConXmlApp(ctk.CTkFrame):
             self._sidebar_visible = not self._sidebar_visible
 
     def alternar_detalles(self) -> None:
-        self._registro_oculto_auto = False
+        self._detalles_ocultos_por_altura = False
         self.mostrar_detalles(not self._detalles_visibles)
 
     def mostrar_detalles(self, visible: bool, forzar: bool = False) -> None:
-        """Muestra/oculta el panel de detalles (resumen de operación + registro)."""
+        """Muestra u oculta los resúmenes de operación dentro de cada pantalla."""
         if not forzar and visible == self._detalles_visibles:
             return
-        # Llamada explícita: el usuario (o la operación en altura normal)
-        # toma el control; se limpia la marca de auto-ocultado.
-        self._registro_oculto_auto = False
         self._detalles_visibles = visible
-        self._btn_detalles.configure(
-            text="Ocultar detalles  ▾" if visible else "Mostrar detalles  ▸"
-        )
-        if visible:
-            self.marco_consola.pack(side="top", fill="both", expand=True)
-            self._lbl_registro.pack(side="left")
-        else:
-            self.marco_consola.pack_forget()
-            self._lbl_registro.pack_forget()
         for pantalla in self._pantallas.values():
             if hasattr(pantalla, "al_alternar_detalles"):
                 pantalla.al_alternar_detalles(visible)
@@ -605,7 +564,7 @@ class ConXmlApp(ctk.CTkFrame):
         self.aplicar_responsive(ancho, alto)
 
     def aplicar_responsive(self, ancho: int, alto: int) -> None:
-        """Adapta sidebar, registro y totales sin recrear tablas ni perder datos."""
+        """Adapta sidebar y totales sin recrear tablas ni perder datos."""
         try:
             ancho = int(ancho)
             alto = int(alto)
@@ -633,7 +592,7 @@ class ConXmlApp(ctk.CTkFrame):
         try:
             self.columnconfigure(0, weight=0, minsize=ancho if self._sidebar_visible else 52)
             self._panel_lateral.configure(width=ancho)
-            self._marca_lateral.configure(font=(th.FUENTE, 15 if compacto else 18, "bold"))
+            self._marca_lateral.configure(text="" if compacto else " CONXML", font=(th.FUENTE, 18, "bold"))
             if self._sidebar_visible:
                 self._cabecera_lateral.configure(width=ancho)
         except Exception:
@@ -660,7 +619,7 @@ class ConXmlApp(ctk.CTkFrame):
                 self._marco_cliente.pack_forget()
                 self._lbl_db_ruta.configure(wraplength=ancho - 32)
             else:
-                self._lbl_subtitulo.pack(anchor="w", padx=16, pady=(0, 20))
+                self._lbl_subtitulo.pack(anchor="w", padx=16, pady=(0, 20), before=self._nav)
                 self._marco_cliente.pack(fill="x", padx=10, pady=(0, 14), before=self._nav)
                 self._lbl_db_ruta.configure(wraplength=200)
         except Exception:
@@ -668,35 +627,25 @@ class ConXmlApp(ctk.CTkFrame):
 
     def _aplicar_modo_altura(self, baja: bool) -> None:
         if baja:
-            # Poca altura: ocultar el registro para dar prioridad a la tabla.
-            # Se marca como auto-ocultado para restaurarlo al ampliar.
             if self._detalles_visibles:
-                self._registro_oculto_auto = False
+                self._detalles_ocultos_por_altura = True
                 self.mostrar_detalles(False)
-                self._registro_oculto_auto = True
         else:
-            if self._registro_oculto_auto:
-                self._registro_oculto_auto = False
+            if self._detalles_ocultos_por_altura:
+                self._detalles_ocultos_por_altura = False
                 self.mostrar_detalles(True)
 
     def actualizar_resumen(self) -> None:
         self._pantallas["resumen"].actualizar_metricas()
 
     def registro(self, texto: str) -> None:
-        self._registro.configure(state="normal")
-        if texto.startswith("==>"):
-            self._registro.insert("end", texto + "\n", "comando")
-        elif (texto.startswith("ERROR:") or "traceback" in texto.lower()
-              or "exception" in texto.lower() or "falló" in texto.lower()):
-            self._registro.insert("end", texto + "\n", "error")
-        elif texto.startswith("  "):
-            self._registro.insert("end", texto + "\n", "detalle")
+        logger = logging.getLogger("conxml.ui")
+        if texto.startswith("ERROR:") or "traceback" in texto.lower() or "exception" in texto.lower():
+            logger.error("%s", texto)
         else:
-            self._registro.insert("end", texto + "\n")
-        self._registro.see("end")
-        self._registro.configure(state="disabled")
+            logger.info("%s", texto)
 
-    def ejecutar(self, fn, al_terminar, texto: str, con_progreso: bool = False) -> bool:
+    def ejecutar(self, fn, al_terminar, texto: str, con_progreso: bool = False, al_error=None) -> bool:
         if self._ocupada:
             messagebox.showinfo(
                 "Operación en curso",
@@ -717,8 +666,8 @@ class ConXmlApp(ctk.CTkFrame):
                     resultado = fn(progreso)
                 else:
                     resultado = fn()
-            except Exception:
-                self._cola.put(("error", traceback.format_exc()))
+            except Exception as exc:
+                self._cola.put(("error", traceback.format_exc(), al_error, exc))
                 return
             self._cola.put(("listo", al_terminar, resultado))
 
@@ -739,10 +688,13 @@ class ConXmlApp(ctk.CTkFrame):
                     self.registro("ERROR:")
                     for linea in item[1].rstrip().splitlines():
                         self.registro(f"  {linea}")
-                    messagebox.showerror(
-                        "Error", "Falló la operación. Revisa el detalle en el registro.",
-                        parent=self,
-                    )
+                    if item[2] is not None:
+                        item[2](item[3])
+                    else:
+                        messagebox.showerror(
+                            "Error", "Falló la operación. Consulta el archivo de diagnóstico para ver más detalles.",
+                            parent=self,
+                        )
                 elif tipo == "listo":
                     self._terminar_operacion()
                     _, al_terminar, resultado = item
@@ -836,6 +788,7 @@ def main() -> None:
     try:
         th.configurar_ctk()
         raiz = ctk.CTk()
+        th.configurar_tablas(raiz)
         try:
             import PIL.ImageTk
             PIL.ImageTk._default_root = raiz

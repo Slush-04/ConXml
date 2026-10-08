@@ -22,12 +22,10 @@ from lxml import etree
 SOAP_NS = "http://schemas.xmlsoap.org/soap/envelope/"
 WSSE_NS = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
 WSU_NS = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"
-WSA_NS = "http://schemas.microsoft.com/ws/2005/05/addressing/none"
 DS_NS = "http://www.w3.org/2000/09/xmldsig#"
 SAT_NS = "http://DescargaMasivaTerceros.sat.gob.mx"
 SAT_AUTH_NS = "http://DescargaMasivaTerceros.gob.mx"
 EXC_C14N = "http://www.w3.org/2001/10/xml-exc-c14n#"
-XML_C14N = "http://www.w3.org/TR/2001/REC-xml-c14n-20010315"
 RSA_SHA1 = f"{DS_NS}rsa-sha1"
 SHA1 = f"{DS_NS}sha1"
 
@@ -36,7 +34,8 @@ ENDPOINT_SOLICITUD = "https://cfdidescargamasivasolicitud.clouda.sat.gob.mx/Soli
 ENDPOINT_VERIFICACION = "https://cfdidescargamasivasolicitud.clouda.sat.gob.mx/VerificaSolicitudDescargaService.svc"
 ENDPOINT_DESCARGA = "https://cfdidescargamasiva.clouda.sat.gob.mx/DescargaMasivaService.svc"
 ACTION_AUTH = "http://DescargaMasivaTerceros.gob.mx/IAutenticacion/Autentica"
-ACTION_SOLICITUD = f"{SAT_NS}/ISolicitaDescargaService/SolicitaDescarga"
+ACTION_SOLICITUD_EMITIDOS = f"{SAT_NS}/ISolicitaDescargaService/SolicitaDescargaEmitidos"
+ACTION_SOLICITUD_RECIBIDOS = f"{SAT_NS}/ISolicitaDescargaService/SolicitaDescargaRecibidos"
 ACTION_VERIFICACION = f"{SAT_NS}/IVerificaSolicitudDescargaService/VerificaSolicitudDescarga"
 ACTION_DESCARGA = f"{SAT_NS}/IDescargaMasivaTercerosService/Descargar"
 _XML_PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
@@ -83,14 +82,23 @@ class CredencialEFirma:
         ahora = datetime.now(timezone.utc)
         if certificado.not_valid_before_utc > ahora or certificado.not_valid_after_utc < ahora:
             raise ErrorDescargaSAT("El certificado de e.firma está vencido o aún no es válido.")
-        try:
-            rfc = certificado.subject.get_attributes_for_oid(x509.NameOID.SERIAL_NUMBER)[0].value.split("/")[0].strip().upper()
-        except (IndexError, AttributeError):
-            rfc = ""
-        if not rfc:
-            raise ErrorDescargaSAT("El certificado no incluye un RFC que ConXml pueda validar.")
+        rfc = _rfc_certificado(certificado)
         der = certificado.public_bytes(serialization.Encoding.DER)
         return cls(certificado, llave, der, rfc)
+
+
+def _rfc_certificado(certificado: Any) -> str:
+    from cryptography import x509
+
+    # La e.firma guarda el RFC en x500UniqueIdentifier; serialNumber puede
+    # contener la CURP. Antes de la diagonal está el titular, después su representante.
+    atributos = certificado.subject.get_attributes_for_oid(x509.ObjectIdentifier("2.5.4.45"))
+    if not atributos:
+        atributos = certificado.subject.get_attributes_for_oid(x509.NameOID.SERIAL_NUMBER)
+    rfc = atributos[0].value.split("/", 1)[0].strip().upper() if atributos else ""
+    if not re.fullmatch(r"[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}", rfc):
+        raise ErrorDescargaSAT("El certificado no incluye un RFC que ConXml pueda validar.")
+    return rfc
 
 
 @dataclass
@@ -149,7 +157,9 @@ class ClienteDescargaSAT:
         if self.fiel.rfc and filtro.rfc != self.fiel.rfc:
             raise ErrorDescargaSAT(f"El RFC de la e.firma ({self.fiel.rfc}) no coincide con el cliente ({filtro.rfc}).")
         token = self.autenticar()
-        root = etree.Element(f"{{{SAT_NS}}}SolicitaDescarga", nsmap={"des": SAT_NS})
+        operacion = f"SolicitaDescarga{filtro.direccion}"
+        action = ACTION_SOLICITUD_EMITIDOS if filtro.direccion == "Emitidos" else ACTION_SOLICITUD_RECIBIDOS
+        root = etree.Element(f"{{{SAT_NS}}}{operacion}", nsmap={"des": SAT_NS})
         attrs = {
             "FechaInicial": _fecha_sat(filtro.fecha_inicial, inicio=True),
             "FechaFinal": _fecha_sat(filtro.fecha_final, inicio=False),
@@ -158,15 +168,16 @@ class ClienteDescargaSAT:
         }
         if filtro.direccion == "Emitidos":
             attrs["RfcEmisor"] = filtro.rfc
+        else:
+            attrs["RfcReceptor"] = filtro.rfc
+            # La descarga de XML recibidos requiere solicitar comprobantes vigentes.
+            attrs["EstadoComprobante"] = "Vigente"
         solicitud = etree.SubElement(root, f"{{{SAT_NS}}}solicitud", attrib=attrs)
-        if filtro.direccion == "Recibidos":
-            receptores = etree.SubElement(solicitud, f"{{{SAT_NS}}}RfcReceptores")
-            etree.SubElement(receptores, f"{{{SAT_NS}}}RfcReceptor").text = filtro.rfc
         if filtro.tipo_comprobante:
             solicitud.set("TipoComprobante", filtro.tipo_comprobante)
         _firmar_peticion(solicitud, self.fiel)
         soap = _envolver(root)
-        respuesta = self._post(ENDPOINT_SOLICITUD, ACTION_SOLICITUD, soap, token)
+        respuesta = self._post(ENDPOINT_SOLICITUD, action, soap, token)
         return RespuestaSAT(
             id_solicitud=_buscar_texto(respuesta, "IdSolicitud"),
             cod_estatus=_buscar_texto(respuesta, "CodEstatus"),
@@ -187,7 +198,10 @@ class ClienteDescargaSAT:
         ]
         for contenedor in respuesta.iter():
             if etree.QName(contenedor).localname.casefold() == "idspaquetes":
-                paquetes.extend(_texto(hijo) for hijo in contenedor if _texto(hijo))
+                if len(contenedor):
+                    paquetes.extend(_texto(hijo) for hijo in contenedor if _texto(hijo))
+                elif _texto(contenedor):
+                    paquetes.append(_texto(contenedor))
         paquetes = list(dict.fromkeys(paquetes))
         return RespuestaSAT(
             id_solicitud=id_solicitud,
@@ -218,24 +232,33 @@ class ClienteDescargaSAT:
             headers["Authorization"] = f'WRAP access_token="{token}"'
         try:
             response = self.session.post(url, data=xml, headers=headers, timeout=self.timeout)
-            response.raise_for_status()
-            root = etree.fromstring(response.content, parser=_XML_PARSER)
         except requests.RequestException as exc:
             raise ErrorDescargaSAT(f"No fue posible comunicarse con el WebService del SAT: {exc}") from exc
-        except etree.XMLSyntaxError as exc:
-            raise ErrorDescargaSAT("El SAT respondió con contenido XML que no se pudo interpretar.") from exc
-        fault = _mensaje_fault(root)
+        # SOAP puede explicar el rechazo en un Fault aunque el HTTP sea 400/500.
+        try:
+            root = etree.fromstring(response.content, parser=_XML_PARSER)
+        except etree.XMLSyntaxError:
+            root = None
+        fault = _mensaje_fault(root) if root is not None else ""
         if fault:
             raise ErrorDescargaSAT(f"El SAT rechazó la operación: {fault}")
+        try:
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise ErrorDescargaSAT(
+                f"El servicio del SAT respondió con HTTP {response.status_code} sin detalles del rechazo."
+            ) from exc
+        if root is None:
+            raise ErrorDescargaSAT("El SAT respondió con contenido XML que no se pudo interpretar.")
         return root
 
     def _envelope_autenticacion(self) -> bytes:
         now = datetime.now(timezone.utc)
         ident = "_conxml_timestamp"
-        envelope = etree.Element(f"{{{SOAP_NS}}}Envelope", nsmap={"s": SOAP_NS, "o": WSSE_NS, "u": WSU_NS, "a": WSA_NS})
+        # BasicHttpBinding no acepta los encabezados WS-Addressing Action/To.
+        # La acción se envía únicamente en el encabezado HTTP SOAPAction.
+        envelope = etree.Element(f"{{{SOAP_NS}}}Envelope", nsmap={"s": SOAP_NS, "o": WSSE_NS, "u": WSU_NS})
         header = etree.SubElement(envelope, f"{{{SOAP_NS}}}Header")
-        etree.SubElement(header, f"{{{WSA_NS}}}Action", attrib={f"{{{SOAP_NS}}}mustUnderstand": "1"}).text = ACTION_AUTH
-        etree.SubElement(header, f"{{{WSA_NS}}}To", attrib={f"{{{SOAP_NS}}}mustUnderstand": "1"}).text = ENDPOINT_AUTH
         security = etree.SubElement(header, f"{{{WSSE_NS}}}Security", attrib={f"{{{SOAP_NS}}}mustUnderstand": "1"})
         timestamp = etree.SubElement(security, f"{{{WSU_NS}}}Timestamp", attrib={f"{{{WSU_NS}}}Id": ident})
         created = now.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -292,23 +315,23 @@ def _envolver(contenido: etree._Element) -> bytes:
 
 def _firmar_peticion(elemento: etree._Element, fiel: CredencialEFirma) -> None:
     ds = f"{{{DS_NS}}}"
+    # SAT valida la operación completa (incluye el contenedor), sin Signature.
+    operacion = elemento.getparent()
+    digest = base64.b64encode(__import__("hashlib").sha1(
+        etree.tostring(operacion, method="c14n", exclusive=True)
+    ).digest()).decode("ascii")
     firma = etree.SubElement(elemento, f"{ds}Signature", nsmap={None: DS_NS})
     signed_info = etree.SubElement(firma, f"{ds}SignedInfo")
-    etree.SubElement(signed_info, f"{ds}CanonicalizationMethod", Algorithm=XML_C14N)
+    etree.SubElement(signed_info, f"{ds}CanonicalizationMethod", Algorithm=EXC_C14N)
     etree.SubElement(signed_info, f"{ds}SignatureMethod", Algorithm=RSA_SHA1)
     referencia = etree.SubElement(signed_info, f"{ds}Reference", URI="")
     transforms = etree.SubElement(referencia, f"{ds}Transforms")
-    etree.SubElement(transforms, f"{ds}Transform", Algorithm=f"{DS_NS}enveloped-signature")
+    etree.SubElement(transforms, f"{ds}Transform", Algorithm=EXC_C14N)
     etree.SubElement(referencia, f"{ds}DigestMethod", Algorithm=SHA1)
     etree.SubElement(referencia, f"{ds}DigestValue")
-    # Referencia URI vacía del protocolo SAT: firma el nodo solicitud sin su ds:Signature.
-    sin_firma = etree.fromstring(etree.tostring(elemento), parser=_XML_PARSER)
-    for nodo in sin_firma.xpath(".//ds:Signature", namespaces={"ds": DS_NS}):
-        nodo.getparent().remove(nodo)
-    digest = base64.b64encode(__import__("hashlib").sha1(etree.tostring(sin_firma, method="c14n")).digest()).decode("ascii")
     referencia.find(f"{ds}DigestValue").text = digest
     signature_value = etree.SubElement(firma, f"{ds}SignatureValue")
-    signed = etree.tostring(signed_info, method="c14n")
+    signed = etree.tostring(signed_info, method="c14n", exclusive=True)
     signature_value.text = base64.b64encode(fiel.llave.sign(signed, __import__("cryptography.hazmat.primitives.asymmetric.padding", fromlist=["PKCS1v15"]).PKCS1v15(), __import__("cryptography.hazmat.primitives.hashes", fromlist=["SHA1"]).SHA1())).decode("ascii")
     key_info = etree.SubElement(firma, f"{ds}KeyInfo")
     x509_data = etree.SubElement(key_info, f"{ds}X509Data")

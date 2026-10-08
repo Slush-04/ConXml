@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS solicitudes_descarga (
     mensaje TEXT NOT NULL DEFAULT '',
     numero_cfdis INTEGER NOT NULL DEFAULT 0,
     paquetes_json TEXT NOT NULL DEFAULT '[]',
+    paquetes_recuperados_json TEXT NOT NULL DEFAULT '[]',
     recuperado INTEGER NOT NULL DEFAULT 0,
     creada_en TEXT NOT NULL,
     actualizada_en TEXT NOT NULL
@@ -194,6 +195,15 @@ class Catalogo:
         for nombre, tipo in faltantes:
             self.conn.execute(f"ALTER TABLE comprobantes ADD COLUMN {nombre} {tipo}")
         if faltantes:
+            self.conn.commit()
+        columnas_sat = {
+            fila[1] for fila in self.conn.execute("PRAGMA table_info(solicitudes_descarga)")
+        }
+        if "paquetes_recuperados_json" not in columnas_sat:
+            self.conn.execute(
+                "ALTER TABLE solicitudes_descarga ADD COLUMN "
+                "paquetes_recuperados_json TEXT NOT NULL DEFAULT '[]'"
+            )
             self.conn.commit()
         # Versiones anteriores guardaban el cliente como texto libre. Crear
         # sus registros permite editarlos desde la nueva pantalla inicial.
@@ -297,6 +307,41 @@ class Catalogo:
         return self.conn.execute(
             "SELECT * FROM solicitudes_descarga WHERE id_sat = ?", (id_sat,),
         ).fetchone()
+
+    def solicitudes_descarga_pendientes(self, rfcs: set[str]) -> list[sqlite3.Row]:
+        """Solicitudes que todavía pueden necesitar consulta o recuperación."""
+        if not rfcs:
+            return []
+        self.conn.row_factory = sqlite3.Row
+        marcadores = ", ".join("?" for _ in rfcs)
+        return self.conn.execute(
+            f"SELECT * FROM solicitudes_descarga WHERE rfc IN ({marcadores}) "
+            "AND recuperado = 0 AND estado IN (1, 2, 3) "
+            "ORDER BY actualizada_en, id",
+            tuple(sorted(rfcs)),
+        ).fetchall()
+
+    def marcar_paquete_recuperado(self, id_sat: str, paquete: str) -> None:
+        """Guarda el avance tras importar un paquete, antes de pedir el siguiente."""
+        fila = self.obtener_solicitud_descarga(id_sat)
+        if fila is None:
+            raise ValueError("La solicitud ya no existe en el catálogo.")
+        recuperados = json.loads(fila["paquetes_recuperados_json"] or "[]")
+        if paquete not in recuperados:
+            recuperados.append(paquete)
+            self.conn.execute(
+                "UPDATE solicitudes_descarga SET paquetes_recuperados_json = ?, "
+                "actualizada_en = ? WHERE id_sat = ?",
+                (json.dumps(recuperados), datetime.now().isoformat(timespec="seconds"), id_sat),
+            )
+            self.conn.commit()
+
+    def registrar_error_solicitud(self, id_sat: str, mensaje: str) -> None:
+        self.conn.execute(
+            "UPDATE solicitudes_descarga SET mensaje = ?, actualizada_en = ? WHERE id_sat = ?",
+            (mensaje, datetime.now().isoformat(timespec="seconds"), id_sat),
+        )
+        self.conn.commit()
 
     def __enter__(self) -> "Catalogo":
         return self

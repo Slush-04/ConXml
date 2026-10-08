@@ -7,8 +7,7 @@ Tres modos:
 """
 from __future__ import annotations
 
-import calendar
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 import tkinter as tk
@@ -46,11 +45,15 @@ from conxml.export.nomina import exportar_nomina
 from conxml.export.pagos import exportar_pagos
 from conxml.sat.estatus import ConfigLote, consultar_lote
 from conxml.ui import theme as th
+from conxml.ui.selector_fecha import SelectorFecha
+from conxml.ui import responsive as resp
 from conxml.ui.columnas import GestorColumnas
 from conxml.ui.widgets import (
     BotonPrimario,
     BotonSecundario,
     Encabezado,
+    BarraAdaptable,
+    texto_adaptable,
     PanelCard,
     ResumenOperacion,
 )
@@ -289,31 +292,10 @@ def _breve(fecha: str | None) -> str:
 
 
 def aplicar_estilo_tabla(tabla: ttk.Treeview) -> None:
-    """Reestila la tabla con el tema Fluent Empresarial."""
-    estilo = ttk.Style()
-    estilo.configure(
-        "Tabla.Treeview",
-        background=th.FONDO_TABLA,
-        fieldbackground=th.FONDO_TABLA,
-        foreground=th.TEXTO,
-        borderwidth=0,
-        rowheight=23,
-        font=(th.FUENTE, th.TAM_TABLA),
-    )
-    estilo.configure(
-        "Tabla.Treeview.Heading",
-        background=th.FONDO,
-        foreground=th.TEXTO_SECUNDARIO,
-        relief="flat",
-        # Encabezados compactos: las tablas tienen muchas columnas y el dato
-        # debe ocupar visualmente más espacio que el título.
-        font=(th.FUENTE, th.TAM_TABLA),
-    )
-    estilo.map("Tabla.Treeview", background=[("selected", th.PRIMARIO)])
-    estilo.map("Tabla.Treeview.Heading", background=[])
-
+    """Comparte el estilo de todas las tablas de la aplicación."""
+    th.configurar_tablas(tabla)
     tabla.tag_configure("par", background=th.FONDO_TABLA)
-    tabla.tag_configure("impar", background=th.FONDO_ENTRADA)
+    tabla.tag_configure("impar", background=th.FONDO)
 
 
 def auto_ajustar_columnas(tabla: ttk.Treeview, min_ancho: int = 70, max_ancho: int = 420) -> None:
@@ -380,8 +362,8 @@ class PanelResumenTotales(PanelCard):
             values=["Totales", "Vigentes", "Cancelados"],
             command=self._al_cambiar_filtro,
             fg_color=th.FONDO_ENTRADA,
-            selected_color=th.PRIMARIO,
-            selected_hover_color=th.PRIMARIO_HOVER,
+            selected_color=th.PRIMARIO_FONDO,
+            selected_hover_color=th.BORDE,
             unselected_color=th.FONDO_TARJETA,
             unselected_hover_color=th.PRIMARIO_FONDO,
             text_color=th.TEXTO,
@@ -403,9 +385,9 @@ class PanelResumenTotales(PanelCard):
         items_def = [
             ("ingresos", "Total Ingresos", th.PRIMARIO),
             ("egresos", "Total Egresos", th.ROJO),
-            ("traslados", "Total Traslados", "#0891B2"),
+            ("traslados", "Total Traslados", th.TEXTO_SECUNDARIO),
             ("ppd", "Total PPD", th.AMBAR),
-            ("pue", "Total PUE", "#9333EA"),
+            ("pue", "Total PUE", th.TEXTO_SECUNDARIO),
             ("total", "Total XML", th.TEXTO),
         ]
 
@@ -720,148 +702,6 @@ class PanelResumenPagos(PanelCard):
 # ── Pantalla Principal de Administración ─────────────────────────────────────
 
 
-class SelectorFecha(ctk.CTkFrame):
-    """Campo compacto DD/MM/AA con calendario desplegable."""
-
-    def __init__(self, parent, al_cambiar=None) -> None:
-        super().__init__(parent, fg_color="transparent", height=32)
-        self._al_cambiar = al_cambiar
-        self._valor = tk.StringVar()
-        self._popup = None
-        self._mes_mostrado = date.today().replace(day=1)
-
-        self._entrada = ctk.CTkEntry(
-            self, textvariable=self._valor, width=96, height=32,
-            placeholder_text="DD/MM/AA", font=(th.FUENTE, th.TAM_BODY),
-        )
-        self._entrada.pack(side="left", fill="x", expand=True)
-        self._entrada.bind("<KeyRelease>", lambda _event: self._notificar())
-        self._entrada.bind("<Return>", lambda _event: self._notificar())
-        ctk.CTkButton(
-            self, text="▾", width=28, height=32,
-            fg_color=th.FONDO_TARJETA, hover_color=th.PRIMARIO_FONDO,
-            text_color=th.TEXTO_SECUNDARIO, border_width=1,
-            border_color=th.BORDE, corner_radius=th.RADIO_CAMPO,
-            font=(th.FUENTE, th.TAM_BODY, "bold"),
-            command=self._abrir_calendario,
-        ).pack(side="left", padx=(4, 0))
-
-    def get(self) -> str:
-        return self._valor.get()
-
-    def set(self, valor: str) -> None:
-        self._valor.set(valor)
-
-    def delete(self, _inicio=0, _fin="end") -> None:
-        self._valor.set("")
-
-    def _notificar(self) -> None:
-        if callable(self._al_cambiar):
-            self._al_cambiar()
-
-    def _abrir_calendario(self) -> None:
-        if self._popup is not None and self._popup.winfo_exists():
-            self._popup.focus_force()
-            return
-        actual = self._parsear(self.get())
-        self._mes_mostrado = actual.replace(day=1) if actual else date.today().replace(day=1)
-        popup = ctk.CTkToplevel(self.winfo_toplevel())
-        self._popup = popup
-        popup.title("Seleccionar fecha")
-        popup.geometry("270x265")
-        popup.resizable(False, False)
-        popup.transient(self.winfo_toplevel())
-        popup.configure(fg_color=th.FONDO)
-
-        contenido = ctk.CTkFrame(popup, fg_color="transparent")
-        contenido.pack(fill="both", expand=True, padx=10, pady=10)
-        cabecera = ctk.CTkFrame(contenido, fg_color="transparent")
-        cabecera.pack(fill="x")
-        self._btn_mes_anterior = ctk.CTkButton(
-            cabecera, text="‹", width=30, height=28, fg_color="transparent",
-            hover_color=th.PRIMARIO_FONDO, text_color=th.TEXTO,
-            command=lambda: self._mover_mes(-1),
-        )
-        self._btn_mes_anterior.pack(side="left")
-        self._lbl_mes = ctk.CTkLabel(
-            cabecera, text="", text_color=th.TEXTO,
-            font=(th.FUENTE, th.TAM_BODY, "bold"),
-        )
-        self._lbl_mes.pack(side="left", fill="x", expand=True)
-        ctk.CTkButton(
-            cabecera, text="›", width=30, height=28, fg_color="transparent",
-            hover_color=th.PRIMARIO_FONDO, text_color=th.TEXTO,
-            command=lambda: self._mover_mes(1),
-        ).pack(side="right")
-
-        self._marco_dias = ctk.CTkFrame(contenido, fg_color="transparent")
-        self._marco_dias.pack(fill="both", expand=True, pady=(6, 0))
-        for columna, nombre in enumerate(("Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do")):
-            self._marco_dias.columnconfigure(columna, weight=1)
-            ctk.CTkLabel(
-                self._marco_dias, text=nombre, text_color=th.TEXTO_SECUNDARIO,
-                font=(th.FUENTE, th.TAM_NOTA, "bold"),
-            ).grid(row=0, column=columna, padx=1, pady=1)
-        self._dibujar_dias()
-        popup.protocol("WM_DELETE_WINDOW", self._cerrar_popup)
-        popup.update_idletasks()
-        x = self.winfo_rootx()
-        y = self.winfo_rooty() + self.winfo_height() + 4
-        popup.geometry(f"+{x}+{y}")
-
-    def _mover_mes(self, desplazamiento: int) -> None:
-        mes = self._mes_mostrado.month - 1 + desplazamiento
-        anio = self._mes_mostrado.year + mes // 12
-        mes = mes % 12 + 1
-        self._mes_mostrado = date(anio, mes, 1)
-        self._dibujar_dias()
-
-    def _dibujar_dias(self) -> None:
-        if self._popup is None or not self._popup.winfo_exists():
-            return
-        meses = (
-            "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
-        )
-        self._lbl_mes.configure(text=f"{meses[self._mes_mostrado.month]} {self._mes_mostrado.year}")
-        for hijo in self._marco_dias.grid_slaves():
-            if int(hijo.grid_info().get("row", 0)) > 0:
-                hijo.destroy()
-        seleccionado = self._parsear(self.get())
-        for fila, semana in enumerate(calendar.monthcalendar(self._mes_mostrado.year, self._mes_mostrado.month), start=1):
-            for columna, dia in enumerate(semana):
-                if not dia:
-                    continue
-                fecha = date(self._mes_mostrado.year, self._mes_mostrado.month, dia)
-                activo = seleccionado == fecha
-                ctk.CTkButton(
-                    self._marco_dias, text=str(dia), width=30, height=27,
-                    fg_color=th.PRIMARIO if activo else "transparent",
-                    hover_color=th.PRIMARIO_HOVER if activo else th.PRIMARIO_FONDO,
-                    text_color="#FFFFFF" if activo else th.TEXTO,
-                    corner_radius=4, font=(th.FUENTE, th.TAM_NOTA),
-                    command=lambda valor=fecha: self._seleccionar(valor),
-                ).grid(row=fila, column=columna, padx=1, pady=1)
-
-    def _seleccionar(self, fecha: date) -> None:
-        self._valor.set(fecha.strftime("%d/%m/%y"))
-        self._notificar()
-        self._cerrar_popup()
-
-    def _cerrar_popup(self) -> None:
-        if self._popup is not None:
-            self._popup.destroy()
-            self._popup = None
-
-    @staticmethod
-    def _parsear(valor: str) -> date | None:
-        for formato in ("%d/%m/%y", "%d/%m/%Y", "%Y-%m-%d", "%Y-%m-%dT%H:%M"):
-            try:
-                return datetime.strptime(valor.strip(), formato).date()
-            except (TypeError, ValueError):
-                pass
-        return None
-
 class PantallaAdministracion(ctk.CTkFrame):
     def __init__(self, parent: ctk.CTkFrame, app, modo: str) -> None:
         super().__init__(parent, fg_color="transparent")
@@ -878,7 +718,7 @@ class PantallaAdministracion(ctk.CTkFrame):
         contenedor.pack(fill="both", expand=True, padx=32, pady=24)
         contenedor.columnconfigure(1, weight=1)
         # La tabla siempre conserva al menos 150px de altura en modo compacto.
-        contenedor.rowconfigure(5 if modo == MODO_PAGOS else 4, weight=1, minsize=150)
+        contenedor.rowconfigure(4, weight=1, minsize=150)
         self._contenedor = contenedor
         self._padx_normal, self._pady_normal = 32, 24
         self._padx_compacto, self._pady_compacto = 12, 12
@@ -887,13 +727,12 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._totales_colapsado_auto = False
 
         if modo == MODO_CFDI40:
-            titulo = "Administración de XML 4.0 (Ingresos / Egresos / Traslados)"
+            titulo = "Comprobantes XML 4.0"
             subtitulo = (
-                "Consulta los XML seleccionados desde la Bóveda, previsualiza la "
-                "información completa y valida estatus SAT."
+                "Ingresos, egresos y traslados. Consulta, valida ante el SAT y exporta tus comprobantes."
             )
         elif modo == MODO_PAGOS:
-            titulo = "Control y conciliación de pagos (REP)"
+            titulo = "Conciliación de pagos"
             subtitulo = (
                 "Consulta los complementos de pago (REP) seleccionados desde la Bóveda, "
                 "valida el estatus y exporta la conciliación."
@@ -907,28 +746,15 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._encabezado = Encabezado(contenedor, titulo, subtitulo)
         self._encabezado.grid(row=0, column=0, columnspan=3, sticky="ew")
 
-        # La carga de archivos se hace desde la Bóveda. Esta pantalla queda
-        # enfocada en consultar y visualizar el catálogo ya seleccionado.
+        # La carga de archivos se realiza únicamente desde la Bóveda.
         self._carpeta = tk.StringVar()
-        self._fila_carpeta = ctk.CTkFrame(
-            contenedor, fg_color=th.PRIMARIO_FONDO, corner_radius=th.RADIO_TARJETA
-        )
-        self._fila_carpeta.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(24, 6))
-        ctk.CTkLabel(
-            self._fila_carpeta,
-            text="Selecciona primero los XML en la Bóveda y después usa este visor.",
-            text_color=th.PRIMARIO_TEXTO,
-            font=(th.FUENTE, th.TAM_BODY), anchor="w",
-        ).pack(fill="x", padx=14, pady=9)
-        self._btn_leer = BotonPrimario(contenedor, "Abrir Bóveda", lambda: self.app.navegar("boveda"))
-        self._btn_leer.grid(row=1, column=2, padx=(10, 0), pady=6, sticky="e")
 
         # Panel de Resumen de Totales según el modo (colapsable, con control visible).
         if modo == MODO_PAGOS:
             self._totales_panel = PanelResumenPagos(contenedor, al_colapsar=self._al_colapsar_totales)
         else:
             self._totales_panel = PanelResumenTotales(contenedor, al_colapsar=self._al_colapsar_totales)
-        self._totales_panel.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(12, 0))
+        self._totales_panel.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(12, 0))
 
         # Panel compacto de búsqueda. Los campos se aplican automáticamente
         # al escribir, sin botones que consuman espacio ni una fila duplicada
@@ -936,7 +762,7 @@ class PantallaAdministracion(ctk.CTkFrame):
         barra_tabla = ctk.CTkFrame(
             contenedor, fg_color=th.FONDO_ENTRADA, corner_radius=th.RADIO_TARJETA
         )
-        barra_tabla.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(12, 0))
+        barra_tabla.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(12, 0))
         self._barra_tabla = barra_tabla
         barra_tabla.columnconfigure(1, weight=1)
         self._filtros = {}
@@ -944,18 +770,19 @@ class PantallaAdministracion(ctk.CTkFrame):
         ctk.CTkLabel(
             barra_tabla, text="Buscar por", text_color=th.TEXTO,
             font=(th.FUENTE, th.TAM_BODY, "bold"), anchor="w",
-        ).grid(row=0, column=0, padx=(14, 10), pady=10, sticky="w")
+        ).grid(row=0, column=0, padx=(14, 10), pady=(6, 0), sticky="w")
 
         campos = ctk.CTkFrame(barra_tabla, fg_color="transparent")
-        campos.grid(row=0, column=1, sticky="ew", padx=(0, 8), pady=8)
+        self._campos_busqueda = campos
+        campos.grid(row=1, column=0, columnspan=3, sticky="ew", padx=12, pady=(0, 8))
         for columna in range(6):
             campos.columnconfigure(columna, weight=1)
 
         definicion_filtros = (
-            ("uuid", "UUID", 190, 0),
-            ("rfc", "RFC", 115, 1),
-            ("serie", "Serie", 85, 2),
-            ("folio", "Folio", 85, 3),
+            ("uuid", "UUID", 110, 0),
+            ("rfc", "RFC", 95, 1),
+            ("serie", "Serie", 60, 2),
+            ("folio", "Folio", 60, 3),
         )
         for clave, texto, ancho, columna in definicion_filtros:
             entrada = ctk.CTkEntry(campos, width=ancho, placeholder_text=texto)
@@ -970,12 +797,13 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._monto.grid(row=0, column=5, padx=(0, 0), sticky="ew")
         self._monto.bind("<KeyRelease>", lambda _event: self._programar_carga_filtrada())
         self._monto.bind("<Return>", lambda _event: self._cargar_tabla())
+        tk.Misc.bind(campos, "<Configure>", self._acomodar_filtros, add="+")
 
         self._lbl_resultados = ctk.CTkLabel(
             barra_tabla, text="0 registros", text_color=th.TEXTO_SECUNDARIO,
             font=(th.FUENTE, th.TAM_NOTA),
         )
-        self._lbl_resultados.grid(row=0, column=2, padx=(8, 14), pady=10, sticky="e")
+        self._lbl_resultados.grid(row=0, column=2, padx=(8, 14), pady=(6, 0), sticky="e")
 
         self._seg_vista = None
         self._combo_vista = None
@@ -984,7 +812,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             # Separar el selector evita que las opciones se recorten cuando
             # conviven con la búsqueda y el zoom del sistema operativo.
             self._barra_vistas = ctk.CTkFrame(contenedor, fg_color="transparent")
-            self._barra_vistas.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+            self._barra_vistas.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(8, 0))
             self._lbl_vista = ctk.CTkLabel(
                 self._barra_vistas, text="Vista:", text_color=th.TEXTO,
                 font=(th.FUENTE, th.TAM_BODY, "bold"),
@@ -995,8 +823,8 @@ class PantallaAdministracion(ctk.CTkFrame):
                 values=[titulo for _clave, titulo in VISTAS_PAGOS],
                 command=self._cambiar_vista,
                 fg_color=th.FONDO_ENTRADA,
-                selected_color=th.PRIMARIO,
-                selected_hover_color=th.PRIMARIO_HOVER,
+                selected_color=th.PRIMARIO_FONDO,
+                selected_hover_color=th.BORDE,
                 unselected_color=th.FONDO_TARJETA,
                 unselected_hover_color=th.PRIMARIO_FONDO,
                 text_color=th.TEXTO,
@@ -1024,7 +852,7 @@ class PantallaAdministracion(ctk.CTkFrame):
 
         marco_tabla = PanelCard(contenedor)
         marco_tabla.grid(
-            row=5 if modo == MODO_PAGOS else 4,
+            row=4,
             column=0, columnspan=3, sticky="nsew", pady=(8, 0),
         )
         marco_tabla.rowconfigure(0, weight=1)
@@ -1044,9 +872,9 @@ class PantallaAdministracion(ctk.CTkFrame):
         aplicar_estilo_tabla(self._tabla)
         self._gestor().aplicar()
 
-        scroll_y = ctk.CTkScrollbar(marco_tabla, command=self._tabla.yview)
-        scroll_x = ctk.CTkScrollbar(
-            marco_tabla, orientation="horizontal", command=self._tabla.xview
+        scroll_y = ttk.Scrollbar(marco_tabla, orient="vertical", command=self._tabla.yview)
+        scroll_x = ttk.Scrollbar(
+            marco_tabla, orient="horizontal", command=self._tabla.xview
         )
         self._tabla.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
         self._tabla.grid(row=0, column=0, sticky="nsew")
@@ -1059,23 +887,23 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._scroll_x = scroll_x
 
         # Fila de acciones inferiores
-        marco_acciones = ctk.CTkFrame(contenedor, fg_color="transparent")
+        marco_acciones = BarraAdaptable(contenedor)
         marco_acciones.grid(
-            row=6 if modo == MODO_PAGOS else 5,
+            row=5,
             column=0, columnspan=3, sticky="ew", pady=(16, 0),
         )
         self._marco_acciones = marco_acciones
 
         self._btn_validar = BotonPrimario(marco_acciones, "Validar estatus", self._validar)
-        self._btn_validar.pack(side="left")
+        marco_acciones.agregar(self._btn_validar)
 
-        self._btn_exportar = BotonPrimario(marco_acciones, "Exportar Excel", self._exportar)
-        self._btn_exportar.pack(side="left", padx=(12, 0))
+        self._btn_exportar = BotonSecundario(marco_acciones, "Exportar Excel", self._exportar)
+        marco_acciones.agregar(self._btn_exportar)
 
         self._force = tk.BooleanVar(value=False)
         self._chk_force = ctk.CTkCheckBox(
             marco_acciones,
-            text="Re-consultar ya validados",
+            text="Incluir ya validados",
             variable=self._force,
             fg_color=th.PRIMARIO,
             hover_color=th.PRIMARIO_HOVER,
@@ -1084,28 +912,28 @@ class PantallaAdministracion(ctk.CTkFrame):
             corner_radius=4,
             font=(th.FUENTE, th.TAM_BODY),
         )
-        self._chk_force.pack(side="left", padx=(16, 0))
+        marco_acciones.agregar(self._chk_force)
 
-        self._btn_columnas = BotonSecundario(marco_acciones, "⚙ Columnas", self._abrir_columnas)
-        self._btn_columnas.pack(side="right")
+        self._btn_columnas = BotonSecundario(marco_acciones, "Columnas", self._abrir_columnas)
+        marco_acciones.agregar(self._btn_columnas)
 
-        self.botones = [self._btn_leer, self._btn_validar, self._btn_exportar]
+        self.botones = [self._btn_validar, self._btn_exportar]
 
-        barra_pdf = ctk.CTkFrame(contenedor, fg_color='transparent')
+        barra_pdf = BarraAdaptable(contenedor)
         barra_pdf.grid(
-            row=7 if modo == MODO_PAGOS else 6,
+            row=6,
             column=0, columnspan=3, sticky='ew', pady=(8, 0),
         )
         for texto, comando in [('Vista previa PDF', self._vista_previa_pdf), ('Guardar PDF', self._guardar_pdf), ('PDF selección (ZIP)', self._pdf_seleccion), ('PDF vista (ZIP)', self._pdf_vista)]:
             boton = BotonSecundario(barra_pdf, texto, comando)
-            boton.pack(side='left', padx=(0, 6))
+            barra_pdf.agregar(boton)
             self.botones.append(boton)
         self._barra_pdf = barra_pdf
 
         # Resumen de operaciones
         self._resumen = ResumenOperacion(contenedor)
         self._resumen.grid(
-            row=8 if modo == MODO_PAGOS else 7,
+            row=7,
             column=0, columnspan=3, sticky="ew", pady=(16, 0),
         )
 
@@ -1118,7 +946,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             height=6,
         )
         self._progreso.grid(
-            row=9 if modo == MODO_PAGOS else 8,
+            row=8,
             column=0, columnspan=3, sticky="ew", pady=(8, 0),
         )
         self._progreso.set(0)
@@ -1127,7 +955,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             font=(th.FUENTE, th.TAM_NOTA),
         )
         self._lbl_progreso.grid(
-            row=10 if modo == MODO_PAGOS else 9,
+            row=9,
             column=0, columnspan=3, sticky="w", pady=(2, 0),
         )
 
@@ -1151,6 +979,20 @@ class PantallaAdministracion(ctk.CTkFrame):
         if self.modo == MODO_PAGOS and vista in dict(VISTAS_PAGOS):
             self._cambiar_vista(dict(VISTAS_PAGOS)[vista])
 
+    def _acomodar_filtros(self, event):
+        if event.widget is not self._campos_busqueda:
+            return
+        ancho = event.width / resp.escalado_widget(self)
+        columnas = 6 if ancho >= 640 else 3
+        if getattr(self, "_columnas_filtro", None) == columnas:
+            return
+        self._columnas_filtro = columnas
+        for col in range(6):
+            self._campos_busqueda.columnconfigure(col, weight=1 if col < columnas else 0)
+        for i, campo in enumerate([*self._filtros.values(), self._fecha, self._monto]):
+            campo.grid_configure(row=i // columnas, column=i % columnas, pady=3,
+                                 padx=(0, 6 if i % columnas < columnas - 1 else 0))
+
     def al_alternar_detalles(self, visible: bool) -> None:
         self._aplicar_detalles(visible)
 
@@ -1166,7 +1008,7 @@ class PantallaAdministracion(ctk.CTkFrame):
 
     def _mostrar_detalles_operacion(self) -> None:
         self._detalles_usados = True
-        # En poca altura no reabrir el registro global involuntariamente:
+        # En poca altura no reabrir los detalles involuntariamente:
         # respetar el control de detalles para que la tabla conserve altura.
         try:
             baja = bool(getattr(self.app, "_alto_compacto", False))
@@ -1219,7 +1061,6 @@ class PantallaAdministracion(ctk.CTkFrame):
             self._lbl_resultados.grid_remove()
         else:
             self._lbl_resultados.grid()
-        self._fila_carpeta.grid_configure(pady=(8 if alto_compacto else 24, 6))
         self._marco_acciones.grid_configure(pady=(8 if alto_compacto else 16, 0))
         if self.modo == MODO_PAGOS:
             self._barra_tabla.grid_configure(pady=(6 if alto_compacto else 12, 0))

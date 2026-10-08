@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 import customtkinter as ctk
 from PIL import Image, ImageTk
 import pypdfium2 as pdfium
+from conxml.ui import theme as th
 
 
 class VisorPDF(ctk.CTkToplevel):
@@ -37,7 +38,7 @@ class VisorPDF(ctk.CTkToplevel):
         self.siguiente = ctk.CTkButton(barra, text='Siguiente', width=90, command=lambda: self._mover(1))
         self.siguiente.pack(side='left')
         ctk.CTkButton(barra, text='Guardar PDF…', command=self._guardar).pack(side='right')
-        zoom = ctk.CTkFrame(self)
+        zoom = ctk.CTkFrame(self, fg_color="transparent")
         zoom.pack(fill='x', padx=12, pady=(0, 6))
         ctk.CTkButton(zoom, text='−', width=40, command=lambda: self._cambiar_zoom(-.25)).pack(side='left', padx=(0, 4))
         ctk.CTkButton(zoom, text='+', width=40, command=lambda: self._cambiar_zoom(.25)).pack(side='left')
@@ -48,7 +49,7 @@ class VisorPDF(ctk.CTkToplevel):
         self.scroll.pack(fill='both', expand=True, padx=12, pady=(0, 12))
         self.scroll.grid_rowconfigure(0, weight=1)
         self.scroll.grid_columnconfigure(0, weight=1)
-        self.canvas = tk.Canvas(self.scroll, background='#d9d9d9', highlightthickness=0)
+        self.canvas = tk.Canvas(self.scroll, background=th.BORDE, highlightthickness=0)
         self.canvas.grid(row=0, column=0, sticky='nsew')
         vertical = ttk.Scrollbar(self.scroll, orient='vertical', command=self.canvas.yview)
         horizontal = ttk.Scrollbar(self.scroll, orient='horizontal', command=self.canvas.xview)
