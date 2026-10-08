@@ -58,6 +58,7 @@ def generar_script_actualizador(
     staging_dir: Path,
     backup_dir: Path,
     log_file: Path,
+    expected_version: str = "",
 ) -> Path:
     """Genera el script PowerShell que reemplaza los binarios tras el cierre de ConXml."""
     contenido = f"""# Script de actualización desatendida para ConXml
@@ -66,7 +67,8 @@ param(
     [Parameter(Mandatory=$false)][string]$TargetDir = '{str(target_dir).replace("'", "''")}',
     [Parameter(Mandatory=$false)][string]$StagingDir = '{str(staging_dir).replace("'", "''")}',
     [Parameter(Mandatory=$false)][string]$BackupDir = '{str(backup_dir).replace("'", "''")}',
-    [Parameter(Mandatory=$false)][string]$LogFile = '{str(log_file).replace("'", "''")}'
+    [Parameter(Mandatory=$false)][string]$LogFile = '{str(log_file).replace("'", "''")}',
+    [Parameter(Mandatory=$false)][string]$ExpectedVersion = '{expected_version}'
 )
 $ErrorActionPreference = "Stop"
 
@@ -83,7 +85,56 @@ function Write-Log($msg) {{
     }}
 }}
 
-Write-Log "Iniciando actualizador para PID $ParentPid hacia $TargetDir"
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Actualizando ConXml"
+$form.Width = 470
+$form.Height = 150
+$form.StartPosition = "CenterScreen"
+$form.TopMost = $true
+$form.ControlBox = $false
+$label = New-Object System.Windows.Forms.Label
+$label.Left = 18
+$label.Top = 18
+$label.Width = 420
+$label.Height = 38
+$label.Text = "Preparando actualización..."
+$bar = New-Object System.Windows.Forms.ProgressBar
+$bar.Left = 18
+$bar.Top = 66
+$bar.Width = 420
+$bar.Height = 22
+$bar.Style = "Marquee"
+$bar.MarqueeAnimationSpeed = 24
+$form.Controls.Add($label)
+$form.Controls.Add($bar)
+$form.Show()
+[System.Windows.Forms.Application]::DoEvents()
+
+function Set-UpdateStatus($message, $percent = -1) {{
+    $label.Text = $message
+    if ($percent -ge 0) {{
+        $bar.Style = "Continuous"
+        $bar.MarqueeAnimationSpeed = 0
+        $bar.Value = [Math]::Max(0, [Math]::Min(100, $percent))
+    }} else {{
+        $bar.Style = "Marquee"
+        $bar.MarqueeAnimationSpeed = 24
+    }}
+    $form.Refresh()
+    [System.Windows.Forms.Application]::DoEvents()
+    Write-Log $message
+}}
+
+function Show-UpdateFailure($message) {{
+    Write-Log "ERROR: $message"
+    [System.Windows.Forms.MessageBox]::Show("$message`n`nRevisa el diagnóstico en:`n$LogFile", "No se pudo actualizar ConXml", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+    $form.Close()
+}}
+
+Write-Log "Iniciando actualización de ConXml $ExpectedVersion para PID $ParentPid hacia $TargetDir"
+Set-UpdateStatus "Cerrando ConXml para instalar la actualización..."
 
 # 1. Esperar a que el proceso padre termine
 if ($ParentPid -gt 0) {{
@@ -99,7 +150,7 @@ if ($ParentPid -gt 0) {{
         $waited += 0.5
     }}
     if (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue) {{
-        Write-Log "ERROR: El proceso padre $ParentPid no se cerró a tiempo. Abortando actualización."
+        Show-UpdateFailure "ConXml no se cerró a tiempo. No se cambiaron los archivos."
         exit 1
     }}
 }}
@@ -107,6 +158,7 @@ if ($ParentPid -gt 0) {{
 Start-Sleep -Milliseconds 600
 
 # 2. Respaldar binarios existentes
+Set-UpdateStatus "Guardando respaldo de la versión anterior..." 15
 if (-not (Test-Path $BackupDir)) {{
     New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null
 }}
@@ -125,12 +177,15 @@ foreach ($f in $archivos) {{
 }}
 
 # 3. Reemplazar binarios desde staging
+Set-UpdateStatus "Instalando ConXml $ExpectedVersion..." 45
 $fallo = $false
+$indiceArchivo = 0
 foreach ($f in $archivos) {{
     $origen = Join-Path $StagingDir $f
     if (Test-Path $origen) {{
         $destino = Join-Path $TargetDir $f
         try {{
+            Set-UpdateStatus "Instalando $f..." (45 + ($indiceArchivo * 25))
             Copy-Item -Path $origen -Destination $destino -Force
             Write-Log "Copiado $origen -> $destino"
         }} catch {{
@@ -139,6 +194,7 @@ foreach ($f in $archivos) {{
             break
         }}
     }}
+    $indiceArchivo += 1
 }}
 
 # 4. Rollback en caso de fallo al copiar
@@ -160,17 +216,28 @@ if ($fallo) {{
         Start-Process -FilePath $exeRestaurado
         Write-Log "Relanzada versión anterior tras rollback."
     }}
+    Show-UpdateFailure "No se pudieron reemplazar los archivos. Se restauró la versión anterior."
     exit 1
 }}
 
 # 5. Relanzar el ejecutable actualizado
 $nuevoExe = Join-Path $TargetDir "conxml.exe"
 if (Test-Path $nuevoExe) {{
-    Write-Log "Lanzando nueva versión: $nuevoExe"
+    Set-UpdateStatus "Iniciando ConXml $ExpectedVersion para comprobar la actualización..." 85
     $nuevoProc = Start-Process -FilePath $nuevoExe -PassThru
-    Start-Sleep -Seconds 2
-    if ($nuevoProc.HasExited -and $nuevoProc.ExitCode -ne 0) {{
-        Write-Log "ERROR: La nueva versión falló al iniciar (código $($nuevoProc.ExitCode)). Ejecutando rollback..."
+    $ventanaAbierta = $false
+    for ($i = 0; $i -lt 40; $i++) {{
+        Start-Sleep -Milliseconds 500
+        try {{
+            $nuevoProc.Refresh()
+            if ($nuevoProc.HasExited) {{ break }}
+            if ($nuevoProc.MainWindowHandle -ne [IntPtr]::Zero) {{ $ventanaAbierta = $true; break }}
+        }} catch {{}}
+        [System.Windows.Forms.Application]::DoEvents()
+    }}
+    if (-not $ventanaAbierta) {{
+        if (-not $nuevoProc.HasExited) {{ Stop-Process -Id $nuevoProc.Id -Force -ErrorAction SilentlyContinue }}
+        Write-Log "ERROR: ConXml $ExpectedVersion no abrió una ventana. Ejecutando rollback."
         foreach ($f in $archivos) {{
             $bak = Join-Path $BackupDir $f
             if (Test-Path $bak) {{
@@ -178,10 +245,12 @@ if (Test-Path $nuevoExe) {{
             }}
         }}
         Start-Process -FilePath $nuevoExe
+        Show-UpdateFailure "ConXml $ExpectedVersion no pudo abrir su ventana. Se restauró la versión anterior."
         exit 1
     }}
 }} else {{
-    Write-Log "ADVERTENCIA: No se encontró $nuevoExe para relanzar."
+    Show-UpdateFailure "No se encontró el ejecutable de ConXml después de instalar."
+    exit 1
 }}
 
 # 6. Limpieza de staging
@@ -189,7 +258,10 @@ try {{
     Remove-Item -Path $StagingDir -Recurse -Force -ErrorAction SilentlyContinue
 }} catch {{}}
 
+Set-UpdateStatus "ConXml $ExpectedVersion se abrió correctamente. Actualización completada." 100
 Write-Log "Actualización completada exitosamente."
+[System.Windows.Forms.MessageBox]::Show("ConXml se actualizó a la versión $ExpectedVersion y se abrió correctamente.", "Actualización completada", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+$form.Close()
 """
     script_path.parent.mkdir(parents=True, exist_ok=True)
     # Windows PowerShell 5.1 interpreta archivos UTF-8 sin BOM como ANSI.
@@ -410,6 +482,7 @@ class Updater:
             staging_dir=staging_dir,
             backup_dir=backup_dir,
             log_file=log_file,
+            expected_version=release.version,
         )
 
         if sys.platform == "win32" and not self.demo and getattr(sys, "frozen", False):
@@ -417,6 +490,7 @@ class Updater:
                 "powershell.exe",
                 "-NoProfile",
                 "-ExecutionPolicy", "Bypass",
+                "-WindowStyle", "Hidden",
                 "-File", str(script_path),
             ]
             flags = 0

@@ -72,9 +72,12 @@ def test_generated_powershell_script_uses_utf8_bom(tmp_path):
     assert 'Actualización completada exitosamente.' in texto
     parametros = texto.split('$ErrorActionPreference', 1)[0]
     lineas_parametros = [linea.strip() for linea in parametros.splitlines()[2:-1]]
-    assert len(lineas_parametros) == 5
+    assert len(lineas_parametros) == 6
     assert all(linea.endswith(',') for linea in lineas_parametros[:-1])
     assert not lineas_parametros[-1].endswith(',')
+    assert 'ExpectedVersion' in texto
+    assert 'ProgressBar' in texto
+    assert 'Actualización completada' in texto
 
 
 @pytest.mark.parametrize('case', ['current', 'older', 'draft', 'prerelease', 'missing', 'no_digest', 'bad_digest', 'wrong_arch', 'uploading', 'bad_size'])
@@ -256,14 +259,15 @@ def test_install_saves_session_and_backup_before_closing(tmp_path, monkeypatch):
         events.append('respaldo')
         return SimpleNamespace(faltantes=[])
     monkeypatch.setattr(ui, 'respaldo_automatico', backup)
-    monkeypatch.setattr('sys.exit', lambda code=0: events.append('exit'))
     controller = Actualizaciones.__new__(Actualizaciones)
     controller.updater = SimpleNamespace(demo='', apply_update=lambda *a: events.append('instalador'), launch=lambda *a: events.append('instalador'))
     controller.app = SimpleNamespace(guardar_sesion=lambda: events.append('sesion'),
                                      ejecutar=lambda fn, cb, *a: cb(fn()),
                                      master=SimpleNamespace(destroy=lambda: events.append('cerrar')))
-    controller._downloaded(SimpleNamespace(version='0.2.1'), tmp_path / 'setup.exe')
-    assert events == ['sesion', 'respaldo', 'instalador', 'cerrar', 'exit']
+    with pytest.raises(SystemExit) as result:
+        controller._downloaded(SimpleNamespace(version='0.2.1'), tmp_path / 'setup.exe')
+    assert result.value.code == 0
+    assert events == ['sesion', 'respaldo', 'instalador', 'cerrar']
 
 
 def test_zip_release_preferred_over_installer(feed):
@@ -383,7 +387,15 @@ def test_powershell_helper_execution_and_rollback(tmp_path):
     # Reemplazamos la sección de Start-Process con un log para la prueba de script
     # Quitar el BOM al leer antes de guardar el script de prueba con un único BOM.
     script_content = script_path.read_text(encoding='utf-8-sig')
-    script_test = script_content.replace('Start-Process -FilePath $nuevoExe -PassThru', '# Test: no start\n$nuevoProc = [pscustomobject]@{HasExited=$false; ExitCode=0}')
+    script_test = script_content.replace(
+        '$nuevoProc = Start-Process -FilePath $nuevoExe -PassThru',
+        '$nuevoProc = [pscustomobject]@{ Id = 123; HasExited = $false; MainWindowHandle = [IntPtr]1 }\n'
+        '$nuevoProc | Add-Member -MemberType ScriptMethod -Name Refresh -Value {}',
+    )
+    script_test = script_test.replace(
+        '[System.Windows.Forms.MessageBox]::Show("ConXml se actualizó a la versión $ExpectedVersion y se abrió correctamente.", "Actualización completada", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null',
+        'Write-Log "Prueba completada; diálogo de éxito omitido."',
+    )
     script_test_path = tmp_path / 'run_test.ps1'
     # PowerShell 5.1 requiere BOM para reconocer UTF-8; sin él los acentos
     # del script se leen como ANSI y la comprobación del log falla.
