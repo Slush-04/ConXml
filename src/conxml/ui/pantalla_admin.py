@@ -926,7 +926,8 @@ class PantallaAdministracion(ctk.CTkFrame):
         marco_acciones.agregar(self._chk_force)
 
         self._btn_columnas = BotonSecundario(marco_acciones, "", self._abrir_columnas,
-                                               image=icono("columnas", th.TEXTO), width=32)
+                                               image=icono("columnas", th.TEXTO))
+        self._btn_columnas.configure(width=32)
         marco_acciones.agregar(self._btn_columnas)
 
         self._btn_ampliar = BotonSecundario(marco_acciones, "Ampliar tabla", self._alternar_tabla_ampliada)
