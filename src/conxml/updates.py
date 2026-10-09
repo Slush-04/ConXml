@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 import requests
 from conxml import __version__
 from conxml.config import Config
+from conxml.windows_process import launch_powershell
 
 REPOSITORY = "Slush-04/ConXml"
 LATEST_URL = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
@@ -588,42 +589,23 @@ class Updater:
         )
 
         if sys.platform == "win32" and not self.demo and getattr(sys, "frozen", False):
-            cmd = [
-                "powershell.exe",
-                "-NoProfile",
-                "-NonInteractive",
-                "-STA",
-                "-ExecutionPolicy", "Bypass",
-                "-WindowStyle", "Hidden",
-                "-File", str(script_path),
-            ]
-            flags = 0
-            if hasattr(subprocess, "DETACHED_PROCESS"):
-                flags |= subprocess.DETACHED_PROCESS
-            if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
-                flags |= subprocess.CREATE_NEW_PROCESS_GROUP
             # Persistir también errores de parser/arranque, anteriores a Write-Log.
             log_file.parent.mkdir(parents=True, exist_ok=True)
             launch_log = log_file.with_name("actualizacion-launcher.log")
             with launch_log.open("ab", buffering=0) as output:
                 output.write(f"\nLanzando actualización {release.version}: {script_path}\n".encode("utf-8"))
-                helper = subprocess.Popen(
-                    cmd, creationflags=flags, close_fds=True,
-                    stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
-                    cwd=str(self.cache),
-                    env={**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"},
-                )
+                helper = launch_powershell(script_path, self.cache, output)
             deadline = time.monotonic() + 15
             while not ready_file.is_file():
                 if helper.poll() is not None:
-                    raise UpdateError(f"El actualizador terminó antes de iniciar. Revisa {launch_log}")
+                    raise UpdateError(f"El actualizador terminó antes de iniciar (código {helper.returncode}). Revisa {launch_log}")
                 if time.monotonic() >= deadline:
                     helper.terminate()
                     helper.wait(timeout=5)
                     raise UpdateError(f"El actualizador no confirmó su arranque. Revisa {launch_log}")
                 time.sleep(0.1)
             if helper.poll() is not None:
-                raise UpdateError(f"El actualizador terminó después de confirmar su arranque. Revisa {launch_log}")
+                raise UpdateError(f"El actualizador terminó después de confirmar su arranque (código {helper.returncode}). Revisa {launch_log}")
 
         return script_path
 

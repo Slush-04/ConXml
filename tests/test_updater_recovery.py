@@ -1,6 +1,7 @@
 """Run the generated PowerShell with simulated Windows processes and real files."""
 import hashlib
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -157,7 +158,7 @@ def test_helper_handshake_and_persistent_output(tmp_path, monkeypatch, mode):
         kwargs['stdout'].write(b'early PowerShell diagnostic\n')
         if mode == 'ready':
             next((cache / 'backup').iterdir()).joinpath('helper.ready').write_text('ready')
-        return SimpleNamespace(poll=lambda: 1 if mode == 'crashed' else None,
+        return SimpleNamespace(returncode=1 if mode == 'crashed' else None, poll=lambda: 1 if mode == 'crashed' else None,
                                terminate=lambda: calls.append('terminated'), wait=lambda **kw: 0)
     monkeypatch.setattr(updates.subprocess, 'Popen', popen)
     if mode == 'ready':
@@ -173,3 +174,42 @@ def test_helper_handshake_and_persistent_output(tmp_path, monkeypatch, mode):
     assert b'early PowerShell diagnostic' in (tmp_path / 'logs' / 'actualizacion-launcher.log').read_bytes()
     if mode == 'timeout':
         assert 'terminated' in calls
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='Requiere PyInstaller y PowerShell en Windows')
+def test_frozen_windowed_launcher_starts_system_powershell(tmp_path):
+    """Exercise the real PyInstaller onefile environment that the installed GUI uses."""
+    import importlib.util
+
+    if importlib.util.find_spec('PyInstaller') is None:
+        pytest.skip('PyInstaller no está instalado')
+    marker = tmp_path / 'helper.ready'
+    script = tmp_path / 'probe.ps1'
+    script.write_text(
+        "Set-Content -LiteralPath '" + str(marker).replace("'", "''") + "' -Value ready -Encoding ascii\n",
+        encoding='utf-8-sig',
+    )
+    probe = tmp_path / 'frozen_probe.py'
+    probe.write_text(
+        "from pathlib import Path\n"
+        "import sys\n"
+        "from conxml.windows_process import launch_powershell\n"
+        "with Path(sys.argv[2]).open('ab', buffering=0) as output:\n"
+        "    process = launch_powershell(Path(sys.argv[1]), Path(sys.argv[1]).parent, output)\n"
+        "    raise SystemExit(process.wait(timeout=20))\n",
+        encoding='utf-8',
+    )
+    package_root = Path(__file__).resolve().parents[1] / 'src'
+    dist = tmp_path / 'dist'
+    built = subprocess.run(
+        [sys.executable, '-m', 'PyInstaller', '--onefile', '--noconsole', '--noconfirm',
+         '--distpath', str(dist), '--workpath', str(tmp_path / 'work'),
+         '--specpath', str(tmp_path / 'spec'), '--paths', str(package_root), str(probe)],
+        capture_output=True, text=True, timeout=180,
+    )
+    assert built.returncode == 0, built.stdout + built.stderr
+    log = tmp_path / 'powershell.log'
+    result = subprocess.run([str(dist / 'frozen_probe.exe'), str(script), str(log)],
+                            capture_output=True, timeout=40)
+    assert result.returncode == 0, log.read_bytes() if log.exists() else result.stderr
+    assert marker.read_text(encoding='ascii').strip() == 'ready'
