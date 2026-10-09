@@ -158,11 +158,22 @@ function Get-InstalledVersion($cliExe) {{
     return $version
 }}
 
+function Get-VerifiedSha256($path) {{
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $stream = [System.IO.File]::OpenRead($path)
+    try {{
+        return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace("-", "")
+    }} finally {{
+        $stream.Dispose()
+        $sha.Dispose()
+    }}
+}}
+
 function Copy-WithRetry($source, $destination) {{
     for ($attempt = 1; $attempt -le 30; $attempt++) {{
         try {{
             Copy-Item -LiteralPath $source -Destination $destination -Force -ErrorAction Stop
-            if ((Get-FileHash -LiteralPath $source).Hash -ne (Get-FileHash -LiteralPath $destination).Hash) {{
+            if ((Get-VerifiedSha256 $source) -ne (Get-VerifiedSha256 $destination)) {{
                 throw "El archivo copiado no coincide con el original."
             }}
             return
