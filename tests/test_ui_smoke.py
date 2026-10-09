@@ -25,7 +25,8 @@ def test_ui_configurar_ctk():
     th.configurar_ctk()
 
 
-def test_ui_arranca_con_display():
+def test_ui_arranca_con_display(tmp_path, monkeypatch):
+    monkeypatch.setenv('CONXML_DATA_DIR', str(tmp_path))
     try:
         import customtkinter as ctk
     except ImportError:

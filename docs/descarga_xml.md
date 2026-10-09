@@ -6,6 +6,10 @@ En **Administración XML → Descarga SAT**, la aplicación toma el RFC del clie
 activo. El usuario elige **Emitidos** o **Recibidos**, el periodo, el tipo de
 CFDI y los archivos `.cer` y `.key` de la e.firma vigente. La contraseña de la
 llave se solicita al operar y se elimina del campo al iniciar la tarea.
+Si pulsa **Guardar e.firma**, ConXml verifica el par y su RFC y copia ambos
+archivos a una carpeta local separada para el cliente activo. Al volver a ese
+cliente, los archivos aparecen seleccionados; siempre debe introducir la
+contraseña para operar. **Quitar guardada** borra las dos copias locales.
 
 ConXml autentica con el SAT, envía la solicitud y conserva en SQLite su
 identificador y estado. El SAT procesa la solicitud de forma asíncrona. Tras
@@ -18,8 +22,8 @@ Para reanudar el seguimiento de solicitudes anteriores después de abrir ConXml,
 selecciona el cliente, indica sus archivos `.cer` y `.key`, escribe la
 contraseña y pulsa **Activar seguimiento**. La contraseña se borra del campo;
 la e.firma descifrada permanece solo en memoria hasta pulsar **Detener
-seguimiento** o cerrar ConXml. La aplicación no conserva credenciales para
-reactivarlo automáticamente al iniciar.
+seguimiento** o cerrar ConXml. Aunque los archivos estén guardados, el
+seguimiento no se reactiva automáticamente al iniciar.
 
 La recuperación aplica el modo y destino elegidos en Configuración. ConXml
 registra cada paquete terminado en SQLite: si falla uno de varios paquetes,
@@ -54,8 +58,9 @@ historial de solicitudes SAT permanecen en la misma base de datos.
 Las opciones afectan únicamente a los paquetes recuperados por ConXml. Si
 descargas directamente en un navegador, el destino lo controla el navegador.
 
-Los certificados, las llaves privadas, las contraseñas y los tokens no se guardan
-en el catálogo. El historial y el avance de paquetes sí persisten para poder
+Los certificados y las llaves privadas solo se guardan localmente si se pulsa
+**Guardar e.firma**; nunca se guardan en el catálogo ni en respaldos. Las
+contraseñas y los tokens tampoco se guardan. El historial y el avance de paquetes sí persisten para poder
 reactivar el seguimiento después de reiniciar ConXml. La conexión con el SAT requiere Internet
 y que la e.firma corresponda al RFC del cliente.
 

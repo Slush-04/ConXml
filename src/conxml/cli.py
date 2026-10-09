@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from conxml import __version__
 from conxml.catalog.db import Catalogo
 from conxml.catalog.importer import importar_carpeta
 from conxml.config import Config
@@ -34,6 +35,7 @@ def construir_parser() -> argparse.ArgumentParser:
         prog="conxml",
         description="Gestor CFDI multi-RFC: importar, estatus SAT y reportes Excel",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subs = parser.add_subparsers(dest="comando")
 
     import_p = subs.add_parser("import", help="Importar XMLs de carpeta al catálogo")

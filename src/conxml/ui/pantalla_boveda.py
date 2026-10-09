@@ -8,10 +8,12 @@ from tkinter import filedialog, messagebox, ttk
 import customtkinter as ctk
 
 from conxml.boveda import (
+    etiqueta_mes,
     instrucciones_boveda_ocultas,
     inicializar_boveda,
     ocultar_instrucciones_boveda,
     periodos_disponibles,
+    procesar_masivo,
     seleccionar_xmls,
 )
 from conxml.catalog.db import Catalogo
@@ -26,7 +28,7 @@ class PantallaBoveda(ctk.CTkFrame):
         super().__init__(parent, fg_color="transparent")
         self.app = app
         self._origen = tk.StringVar()
-        self._direccion = tk.StringVar(value="Masivo")
+        self._direccion = tk.StringVar(value="Emitidos")
         self._anio = tk.StringVar(value="Todos")
         self._mes = tk.StringVar(value="Todos")
         self._archivos_actuales: list[Path] = []
@@ -61,7 +63,7 @@ class PantallaBoveda(ctk.CTkFrame):
         filtros = BarraAdaptable(card)
         filtros.grid(row=3, column=0, sticky="ew", padx=16, pady=(0, 12))
         for nombre, variable, valores, comando, atributo, ancho in (
-            ("Origen", self._direccion, ["Emitidos", "Recibidos", "Masivo"], self._cambiar_origen, "_combo_direccion", 150),
+            ("Origen", self._direccion, ["Emitidos", "Recibidos"], self._cambiar_origen, "_combo_direccion", 150),
             ("Año", self._anio, ["Todos"], lambda _v: self._actualizar_lista(), "_combo_anio", 105),
             ("Mes", self._mes, ["Todos"], lambda _v: self._actualizar_lista(), "_combo_mes", 105),
         ):
@@ -107,12 +109,19 @@ class PantallaBoveda(ctk.CTkFrame):
         cliente = self.app.cliente_actual
         if not cliente:
             self.app.cambiar_cliente(); return
-        inicializar_boveda(Config(), cliente)
+        config = Config()
+        inicializar_boveda(config, cliente)
         with Catalogo(self.app.db_path) as catalogo:
             detalle = catalogo.obtener_cliente(cliente)
+        # Conservar XML de instalaciones anteriores sin volver a crear Masivo.
+        procesar_masivo(config, cliente, (detalle["rfc"] if detalle else "") or "")
         self._cliente_lbl.configure(text=f"Cliente activo: {detalle['nombre'] if detalle else cliente} ({cliente})")
-        anios, meses = periodos_disponibles(Config(), cliente)
-        self._combo_anio.configure(values=["Todos", *anios]); self._combo_mes.configure(values=["Todos", *meses])
+        anios, meses = periodos_disponibles(config, cliente)
+        if self._anio.get() not in {"Todos", *anios}:
+            self._anio.set("Todos")
+        if self._mes.get() not in {"Todos", *(etiqueta_mes(mes) for mes in meses)}:
+            self._mes.set("Todos")
+        self._combo_anio.configure(values=["Todos", *anios]); self._combo_mes.configure(values=["Todos", *(etiqueta_mes(mes) for mes in meses)])
         self._actualizar_estado_filtros()
         self._actualizar_lista()
         self._mostrar_instrucciones_si_corresponde()
@@ -143,7 +152,7 @@ class PantallaBoveda(ctk.CTkFrame):
 
         pasos = (
             "1. Pulsa Examinar y elige cualquier carpeta que contenga archivos XML.",
-            "2. Para la Bóveda, selecciona Emitidos, Recibidos o Masivo; después elige año y mes.",
+            "2. Para la Bóveda, selecciona Emitidos o Recibidos; después elige año y mes.",
             "3. Revisa la lista de XML que corresponde a tu selección.",
             "4. Pulsa Cargar selección para llevar esos XML a Administración de XML.",
         )
@@ -227,7 +236,7 @@ class PantallaBoveda(ctk.CTkFrame):
         else:
             archivos = seleccionar_xmls(
                 Config(), self.app.cliente_actual, self._direccion.get(),
-                self._anio.get(), self._mes.get(),
+                self._anio.get(), self._mes.get().split("-", 1)[0],
             )
         self._archivos_actuales = archivos
         if archivos:
@@ -244,16 +253,12 @@ class PantallaBoveda(ctk.CTkFrame):
         if self._origen_externo:
             return ("Carpeta", "—", "—", archivo.name)
         partes = archivo.parts
-        if "Masivo" in partes:
-            indice = partes.index("Masivo")
-            direccion = partes[indice - 1] if indice else "Masivo"
-            return (direccion, "Pendiente", "Masivo", archivo.name)
         if len(partes) >= 2 and partes[-2].isdigit() and len(partes[-2]) == 4:
             direccion = next((p for p in reversed(partes[:-2]) if p in ("Emitidos", "Recibidos")), "—")
             return (direccion, partes[-2], "—", archivo.name)
         if len(partes) >= 3 and partes[-3].isdigit() and len(partes[-3]) == 4:
             direccion = next((p for p in reversed(partes[:-3]) if p in ("Emitidos", "Recibidos")), "—")
-            return (direccion, partes[-3], partes[-2], archivo.name)
+            return (direccion, partes[-3], etiqueta_mes(partes[-2]), archivo.name)
         return ("—", "—", "—", archivo.name)
 
     def _cargar_seleccion(self) -> None:

@@ -61,6 +61,7 @@ from conxml.ui.widgets import (
 MODO_CFDI40 = "cfdi40"
 MODO_PAGOS = "pagos"
 MODO_NOMINA = "nomina"
+TIPOS_POR_MODO = {MODO_CFDI40: ("I", "E", "T"), MODO_PAGOS: ("P",), MODO_NOMINA: ("N",)}
 
 _COLUMNAS_CFDI40 = [
     ("verificado", "Verificado o Asoc", 110),
@@ -642,7 +643,7 @@ class PanelResumenPagos(PanelCard):
         for p in pagos:
             doctos.extend(catalogo.consultar_doctos(p["id"]))
 
-        ppd = [c for c in comprobantes if c["metodo_pago"] == "PPD"]
+        ppd = [c for c in comprobantes if c["metodo_pago"] == "PPD" and c["tipo_comprobante"] in ("I", "E")]
         ppd_cnt = len(ppd)
         ppd_tot = sum(float(c["total"]) for c in ppd if c["total"])
 
@@ -707,6 +708,8 @@ class PantallaAdministracion(ctk.CTkFrame):
         super().__init__(parent, fg_color="transparent")
         self.app = app
         self.modo = modo
+        self._tabla_ampliada = False
+        self._restaurar_sidebar = False
         self._cliente_cargado: str | None = None
         self._carpeta_cargada: Path | None = None
         self._vista = "conciliacion"
@@ -778,6 +781,13 @@ class PantallaAdministracion(ctk.CTkFrame):
         for columna in range(6):
             campos.columnconfigure(columna, weight=1)
 
+        self._etiquetas_filtro = []
+        for i, texto in enumerate(("UUID", "RFC", "Serie", "Folio", "Fecha · DD/MM/AA", "Monto")):
+            etiqueta = ctk.CTkLabel(campos, text=texto, anchor="w",
+                                    font=(th.FUENTE, th.TAM_NOTA), text_color=th.TEXTO_SECUNDARIO)
+            etiqueta.grid(row=0, column=i, sticky="w", padx=(0, 6))
+            self._etiquetas_filtro.append(etiqueta)
+
         definicion_filtros = (
             ("uuid", "UUID", 110, 0),
             ("rfc", "RFC", 95, 1),
@@ -786,15 +796,15 @@ class PantallaAdministracion(ctk.CTkFrame):
         )
         for clave, texto, ancho, columna in definicion_filtros:
             entrada = ctk.CTkEntry(campos, width=ancho, placeholder_text=texto)
-            entrada.grid(row=0, column=columna, padx=(0, 6), pady=(0, 4), sticky="ew")
+            entrada.grid(row=1, column=columna, padx=(0, 6), pady=(0, 4), sticky="ew")
             entrada.bind("<KeyRelease>", lambda _event: self._programar_carga_filtrada())
             entrada.bind("<Return>", lambda _event: self._cargar_tabla())
             self._filtros[clave] = entrada
 
         self._fecha = SelectorFecha(campos, self._programar_carga_filtrada)
-        self._fecha.grid(row=0, column=4, padx=(0, 6), sticky="ew")
+        self._fecha.grid(row=1, column=4, padx=(0, 6), sticky="ew")
         self._monto = ctk.CTkEntry(campos, width=105, placeholder_text="Monto")
-        self._monto.grid(row=0, column=5, padx=(0, 0), sticky="ew")
+        self._monto.grid(row=1, column=5, padx=(0, 0), sticky="ew")
         self._monto.bind("<KeyRelease>", lambda _event: self._programar_carga_filtrada())
         self._monto.bind("<Return>", lambda _event: self._cargar_tabla())
         tk.Misc.bind(campos, "<Configure>", self._acomodar_filtros, add="+")
@@ -917,6 +927,8 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._btn_columnas = BotonSecundario(marco_acciones, "Columnas", self._abrir_columnas)
         marco_acciones.agregar(self._btn_columnas)
 
+        self._btn_ampliar = BotonSecundario(marco_acciones, "Ampliar tabla", self._alternar_tabla_ampliada)
+        marco_acciones.agregar(self._btn_ampliar)
         self.botones = [self._btn_validar, self._btn_exportar]
 
         barra_pdf = BarraAdaptable(contenedor)
@@ -924,10 +936,13 @@ class PantallaAdministracion(ctk.CTkFrame):
             row=6,
             column=0, columnspan=3, sticky='ew', pady=(8, 0),
         )
-        for texto, comando in [('Vista previa PDF', self._vista_previa_pdf), ('Guardar PDF', self._guardar_pdf), ('PDF selección (ZIP)', self._pdf_seleccion), ('PDF vista (ZIP)', self._pdf_vista)]:
+        for texto, comando in [('PDF selección (ZIP)', self._pdf_seleccion), ('PDF vista (ZIP)', self._pdf_vista)]:
             boton = BotonSecundario(barra_pdf, texto, comando)
             barra_pdf.agregar(boton)
             self.botones.append(boton)
+        barra_pdf.agregar(ctk.CTkLabel(
+            barra_pdf, text="Doble clic en una fila para abrir su PDF",
+            font=(th.FUENTE, th.TAM_NOTA), text_color=th.TEXTO_SECUNDARIO))
         self._barra_pdf = barra_pdf
 
         # Resumen de operaciones
@@ -964,7 +979,7 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._aplicar_detalles(self.app.detalles_visibles)
         sesion = estado_local.cargar().get('sesion', {}).get('pantallas', {}).get(self.modo, {})
         for clave, valor in sesion.get('filtros', {}).items():
-            if clave in self._filtros and isinstance(valor, str):
+            if clave in self._filtros and isinstance(valor, str) and valor:
                 self._filtros[clave].insert(0, valor)
         campos_sesion = {
             "fecha": self._fecha,
@@ -973,7 +988,10 @@ class PantallaAdministracion(ctk.CTkFrame):
         for clave, entrada in campos_sesion.items():
             valor = sesion.get("filtros", {}).get(clave, "")
             if isinstance(valor, str) and valor:
-                entrada.insert(0, valor)
+                if clave == "fecha":
+                    entrada.set(valor)
+                else:
+                    entrada.insert(0, valor)
         self._carpeta.set(sesion.get('carpeta', ''))
         vista = sesion.get('vista')
         if self.modo == MODO_PAGOS and vista in dict(VISTAS_PAGOS):
@@ -990,7 +1008,8 @@ class PantallaAdministracion(ctk.CTkFrame):
         for col in range(6):
             self._campos_busqueda.columnconfigure(col, weight=1 if col < columnas else 0)
         for i, campo in enumerate([*self._filtros.values(), self._fecha, self._monto]):
-            campo.grid_configure(row=i // columnas, column=i % columnas, pady=3,
+            self._etiquetas_filtro[i].grid_configure(row=2 * (i // columnas), column=i % columnas)
+            campo.grid_configure(row=2 * (i // columnas) + 1, column=i % columnas, pady=3,
                                  padx=(0, 6 if i % columnas < columnas - 1 else 0))
 
     def al_alternar_detalles(self, visible: bool) -> None:
@@ -998,7 +1017,10 @@ class PantallaAdministracion(ctk.CTkFrame):
 
     def _aplicar_detalles(self, visible: bool) -> None:
         if visible and self._detalles_usados:
-            self._resumen.grid()
+            if self._tabla_ampliada:
+                self._resumen.grid_remove()
+            else:
+                self._resumen.grid()
             self._progreso.grid()
             self._lbl_progreso.grid()
         else:
@@ -1066,7 +1088,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             self._barra_tabla.grid_configure(pady=(6 if alto_compacto else 12, 0))
         # Márgenes compactos para dar aire a la tabla en laptops.
         try:
-            if ancho_compacto or alto_compacto:
+            if ancho_compacto or alto_compacto or self._tabla_ampliada:
                 self._contenedor.pack_configure(padx=self._padx_compacto, pady=self._pady_compacto)
             else:
                 self._contenedor.pack_configure(padx=self._padx_normal, pady=self._pady_normal)
@@ -1095,6 +1117,32 @@ class PantallaAdministracion(ctk.CTkFrame):
             self._aplicar_selector_vista(ancho_compacto)
         except Exception:
             pass
+
+    def _alternar_tabla_ampliada(self) -> None:
+        self._tabla_ampliada = not self._tabla_ampliada
+        if self._tabla_ampliada:
+            self._restaurar_sidebar = self.app.sidebar_visible
+            if self._restaurar_sidebar:
+                self.app.alternar_sidebar()
+            for widget in (self._encabezado, self._totales_panel, self._barra_pdf):
+                widget.grid_remove()
+            self._contenedor.pack_configure(padx=8, pady=8)
+            self._btn_ampliar.configure(text="Restaurar tabla")
+            self._tabla.focus_set()
+        else:
+            for widget in (self._encabezado, self._totales_panel, self._barra_pdf):
+                widget.grid()
+            if self._restaurar_sidebar and not self.app.sidebar_visible:
+                self.app.alternar_sidebar()
+            self._restaurar_sidebar = False
+            compacto = self._ancho_compacto or self._alto_compacto
+            self._contenedor.pack_configure(padx=8 if compacto else 16, pady=8 if compacto else 16)
+            self._btn_ampliar.configure(text="Ampliar tabla")
+        self._aplicar_detalles(self.app.detalles_visibles)
+
+    def al_ocultar(self) -> None:
+        if self._tabla_ampliada:
+            self._alternar_tabla_ampliada()
 
     def _aplicar_selector_vista(self, ancho_compacto: bool) -> None:
         if self.modo != MODO_PAGOS or self._seg_vista is None or self._combo_vista is None:
@@ -1331,6 +1379,8 @@ class PantallaAdministracion(ctk.CTkFrame):
     def _consulta(self, catalogo: Catalogo, **kwargs):
         """Consulta siempre el cliente activo y aplica los filtros visibles."""
         kwargs.update(self._filtro_kwargs())
+        if "tipo" not in kwargs and "tipos" not in kwargs:
+            kwargs["tipos"] = TIPOS_POR_MODO[self.modo]
         return catalogo.consulta(cliente=self._cliente_cargado, **kwargs)
 
     def _aplicar_filtros(self) -> None:
@@ -1410,21 +1460,27 @@ class PantallaAdministracion(ctk.CTkFrame):
     def _validar(self) -> None:
         cliente = self.app.cliente_actual or self._cliente_cargado
         force = self._force.get()
-        config = ConfigLote(delay_segundos=2.0)
-        self._resumen.mostrar("Consultando estatus SAT…", detalle="Preparando la consulta.")
+        uuids = self._uuids_visibles(seleccion=True)
+        if not cliente or not uuids:
+            messagebox.showinfo("Validar estatus", "No hay comprobantes para validar en esta vista.", parent=self)
+            return
+        config = ConfigLote(delay_segundos=0.3, trabajadores=3)
+        alcance = "selección" if self._tabla.selection() else "vista filtrada"
+        self._resumen.mostrar("Consultando estatus SAT…",
+                             detalle=f"{len(uuids)} comprobantes de la {alcance}; se omiten los ya validados salvo que lo indiques.")
         self._progreso.set(0)
         self._mostrar_detalles_operacion()
         self.app.ejecutar(
-            lambda progreso: self._run_validar(cliente, force, config, progreso),
+            lambda progreso: self._run_validar(cliente, force, config, progreso, uuids),
             lambda res: self._presentar_validar(res),
-            "Consultando estatus SAT (puede tardar varios minutos)",
+            f"Consultando estatus SAT de {len(uuids)} comprobantes",
             con_progreso=True,
         )
 
-    def _run_validar(self, cliente, force, config, progreso):
+    def _run_validar(self, cliente, force, config, progreso, uuids):
         with Catalogo(self.app.db_path) as catalogo:
             resultado = consultar_lote(
-                catalogo, config=config, cliente=cliente, force=force, progreso=progreso
+                catalogo, config=config, cliente=cliente, force=force, progreso=progreso, uuids=uuids
             )
             return resultado
 
@@ -1487,7 +1543,7 @@ class PantallaAdministracion(ctk.CTkFrame):
     def _run_exportar(self, destino: Path, cliente):
         with Catalogo(self.app.db_path) as catalogo:
             if self.modo == MODO_CFDI40:
-                return exportar_listado(catalogo, destino, cliente=cliente)
+                return exportar_listado(catalogo, destino, cliente=cliente, tipos=TIPOS_POR_MODO[self.modo])
             if self.modo == MODO_PAGOS:
                 return exportar_pagos(catalogo, destino, cliente=cliente)
             return exportar_nomina(catalogo, destino, cliente=cliente)
@@ -1508,6 +1564,8 @@ class PantallaAdministracion(ctk.CTkFrame):
             messagebox.showerror("No se pudo abrir la carpeta", str(exc), parent=self)
 
     def _doble_clic_pdf(self, event) -> None:
+        if self._tabla.identify_region(event.x, event.y) not in ("cell", "tree"):
+            return
         item = self._tabla.identify_row(event.y)
         if item:
             self._tabla.selection_set(item)
@@ -1520,10 +1578,21 @@ class PantallaAdministracion(ctk.CTkFrame):
         if item not in self._tabla.selection():
             self._tabla.selection_set(item)
         menu = tk.Menu(self, tearoff=False)
-        menu.add_command(label='Vista previa PDF', command=self._vista_previa_pdf)
-        menu.add_command(label='Guardar PDF', command=self._guardar_pdf)
+        menu.add_command(label='Abrir PDF', command=self._vista_previa_pdf)
         menu.add_command(label='PDF de selección (ZIP)', command=self._pdf_seleccion)
         menu.tk_popup(event.x_root, event.y_root)
+
+    def _uuids_visibles(self, seleccion=False):
+        items = self._tabla.selection() if seleccion else ()
+        items = items or self._tabla.get_children()
+        columnas = list(self._tabla["columns"])
+        uuids = set()
+        for item in items:
+            fila = dict(zip(columnas, self._tabla.item(item, "values")))
+            valor = fila.get("uuid") or fila.get("uuid_rep") or fila.get("uuid_doc")
+            if valor:
+                uuids.add(valor)
+        return uuids
 
     def _documentos_pdf(self, todos=False, individual=False):
         items = self._tabla.get_children() if todos else self._tabla.selection()
@@ -1641,7 +1710,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             for doc in catalogo.consultar_doctos(pago["id"]):
                 doctos_por_uuid.setdefault(doc["uuid_doc"], []).append(doc)
 
-        for i, f in enumerate(self._consulta(catalogo)):
+        for i, f in enumerate(self._consulta(catalogo, tipos=("I", "E"))):
             if f["metodo_pago"] != "PPD" or f["tipo_comprobante"] not in ("I", "E"):
                 continue
             base = "impar" if i % 2 == 1 else "par"
@@ -1720,6 +1789,8 @@ class PantallaAdministracion(ctk.CTkFrame):
         comprobantes = {f["uuid"]: f for f in self._consulta(catalogo)}
         for i, pago in enumerate(catalogo.consultar_pagos(cliente=self._cliente_cargado)):
             rep = comprobantes.get(pago["comprobante_uuid"])
+            if rep is None:
+                continue
             base = "impar" if i % 2 == 1 else "par"
             self._insertar_fila(
                 "", "end",
@@ -1744,10 +1815,12 @@ class PantallaAdministracion(ctk.CTkFrame):
 
     def _filas_doctos(self, catalogo: Catalogo) -> None:
         comprobantes = {f["uuid"]: f for f in self._consulta(catalogo)}
-        todo = {f["uuid"]: f for f in catalogo.consulta()}
+        todo = {f["uuid"]: f for f in catalogo.consulta(cliente=self._cliente_cargado, tipos=("I", "E"))}
         contador_filas = 0
         for pago in catalogo.consultar_pagos(cliente=self._cliente_cargado):
             rep = comprobantes.get(pago["comprobante_uuid"])
+            if rep is None:
+                continue
             for doc in catalogo.consultar_doctos(pago["id"]):
                 factura = todo.get(doc["uuid_doc"])
                 fecha = (factura["fecha"] or "") if factura else ""
@@ -1858,10 +1931,12 @@ class PantallaAdministracion(ctk.CTkFrame):
 
     def _filas_pagos(self, catalogo: Catalogo) -> None:
         comprobantes = {f["uuid"]: f for f in self._consulta(catalogo)}
-        todo = {f["uuid"]: f for f in catalogo.consulta()}
+        todo = {f["uuid"]: f for f in catalogo.consulta(cliente=self._cliente_cargado, tipos=("I", "E"))}
         contador_filas = 0
         for pago in catalogo.consultar_pagos(cliente=self._cliente_cargado):
             rep = comprobantes.get(pago["comprobante_uuid"])
+            if rep is None:
+                continue
             for doc in catalogo.consultar_doctos(pago["id"]):
                 factura = todo.get(doc["uuid_doc"])
                 base = "impar" if contador_filas % 2 == 1 else "par"

@@ -412,7 +412,7 @@ def test_powershell_helper_execution_and_rollback(tmp_path):
     assert 'Actualización completada exitosamente' in log_file.read_text(encoding='utf-8')
 
 
-def test_data_preservation_during_direct_update(tmp_path):
+def test_data_preservation_during_direct_update(tmp_path, monkeypatch):
     """Garantiza que el catálogo, preferencias, boveda y respaldos permanezcan intactos tras actualizar."""
     from conxml.config import Config
 
@@ -425,7 +425,7 @@ def test_data_preservation_during_direct_update(tmp_path):
     boveda_file.write_text('<cfdi/>', encoding='utf-8')
 
     # Ejecutar Config().inicializar() no debe sobreescribir ni borrar nada
-    os.environ['CONXML_DATA_DIR'] = str(data_dir)
+    monkeypatch.setenv('CONXML_DATA_DIR', str(data_dir))
     cfg = Config()
     cfg.inicializar()
 

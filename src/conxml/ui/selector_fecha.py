@@ -22,9 +22,13 @@ class SelectorFecha(ctk.CTkFrame):
         self._mes_mostrado = date.today().replace(day=1)
 
         self._entrada = ctk.CTkEntry(
-            self, textvariable=self._valor, width=118 if anio_completo else 96, height=32,
+            self, width=118 if anio_completo else 96, height=32,
             placeholder_text="DD/MM/AAAA" if anio_completo else "DD/MM/AA", font=(th.FUENTE, th.TAM_BODY),
         )
+        # CTkEntry desactiva el placeholder cuando recibe textvariable.
+        # Sincronizar explícitamente conserva la ayuda y la variable compartida.
+        self._traza_valor = self._valor.trace_add("write", self._sincronizar_entrada)
+        self._sincronizar_entrada()
         self._entrada.pack(side="left", fill="x", expand=True)
         self._entrada.bind("<KeyRelease>", lambda _event: self._notificar())
         self._entrada.bind("<Return>", lambda _event: self._notificar())
@@ -40,7 +44,14 @@ class SelectorFecha(ctk.CTkFrame):
         ).pack(side="left", padx=(4, 0))
 
     def get(self) -> str:
-        return self._valor.get()
+        return self._entrada.get()
+
+    def _sincronizar_entrada(self, *_args) -> None:
+        valor = self._valor.get()
+        if self._entrada.get() != valor:
+            self._entrada.delete(0, "end")
+            if valor:
+                self._entrada.insert(0, valor)
 
     def set(self, valor: str) -> None:
         self._valor.set(valor)
@@ -49,6 +60,7 @@ class SelectorFecha(ctk.CTkFrame):
         self._valor.set("")
 
     def _notificar(self) -> None:
+        self._valor.set(self._entrada.get())
         if callable(self._al_cambiar):
             self._al_cambiar()
 
@@ -59,7 +71,7 @@ class SelectorFecha(ctk.CTkFrame):
         fecha = self._parsear(valor)
         if fecha:
             self._valor.set(fecha.strftime(self._formato))
-            self._notificar()
+        self._notificar()
 
     def _abrir_calendario(self) -> None:
         if self._popup is not None and self._popup.winfo_exists():
@@ -164,6 +176,7 @@ class SelectorFecha(ctk.CTkFrame):
 
     def destroy(self) -> None:
         self._cerrar_popup()
+        self._valor.trace_remove("write", self._traza_valor)
         super().destroy()
 
     @staticmethod

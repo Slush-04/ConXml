@@ -7,6 +7,7 @@ import customtkinter as ctk
 
 from conxml.catalog.db import Catalogo
 from conxml.ui import theme as th
+from conxml.ui.scroll import PaginaDesplazable
 from conxml.ui.widgets import (
     BotonPrimario,
     Card,
@@ -35,7 +36,7 @@ class PantallaResumen(ctk.CTkFrame):
         self.app = app
         self.botones: list = []
 
-        self._contenedor = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self._contenedor = PaginaDesplazable(self, fg_color="transparent")
         self._contenedor.pack(fill="both", expand=True, padx=16, pady=16)
         self._contenedor.columnconfigure(0, weight=1)
 

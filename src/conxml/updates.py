@@ -164,6 +164,19 @@ if (-not (Test-Path $BackupDir)) {{
 }}
 
 $archivos = @("conxml.exe", "conxml-cli.exe")
+$faltante = $false
+foreach ($f in $archivos) {{
+    $origen = Join-Path $StagingDir $f
+    if (-not (Test-Path -LiteralPath $origen -PathType Leaf) -or (Get-Item -LiteralPath $origen).Length -le 0) {{
+        Write-Log "ERROR: El paquete no contiene un $f válido."
+        $faltante = $true
+    }}
+}}
+if ($faltante) {{
+    Write-Log "No se modificó la instalación porque el paquete está incompleto."
+    exit 1
+}}
+
 foreach ($f in $archivos) {{
     $actual = Join-Path $TargetDir $f
     if (Test-Path $actual) {{
@@ -187,7 +200,12 @@ foreach ($f in $archivos) {{
         try {{
             Set-UpdateStatus "Instalando $f..." (45 + ($indiceArchivo * 25))
             Copy-Item -Path $origen -Destination $destino -Force
-            Write-Log "Copiado $origen -> $destino"
+            $hashOrigen = (Get-FileHash -LiteralPath $origen -Algorithm SHA256).Hash
+            $hashDestino = (Get-FileHash -LiteralPath $destino -Algorithm SHA256).Hash
+            if ($hashOrigen -ne $hashDestino) {{
+                throw "La copia de $f no coincide con el archivo descargado."
+            }}
+            Write-Log "Verificado $f (SHA-256 $hashDestino) en $destino"
         }} catch {{
             Write-Log "ERROR al copiar ${{f}}: ${{_}}"
             $fallo = $true
@@ -195,6 +213,22 @@ foreach ($f in $archivos) {{
         }}
     }}
     $indiceArchivo += 1
+}}
+
+# El CLI comparte el mismo paquete Python que la interfaz y permite comprobar
+# la versión embebida antes de relanzar ConXml.
+if (-not $fallo) {{
+    try {{
+        $cliExe = Join-Path $TargetDir "conxml-cli.exe"
+        $versionInstalada = (& $cliExe --version | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0 -or $versionInstalada -ne "conxml $ExpectedVersion") {{
+            throw "Se esperaba conxml $ExpectedVersion y el ejecutable instalado reportó '$versionInstalada'."
+        }}
+        Write-Log "Versión comprobada antes del arranque: $versionInstalada"
+    }} catch {{
+        Write-Log "ERROR al comprobar la versión instalada: $($_.Exception.Message)"
+        $fallo = $true
+    }}
 }}
 
 # 4. Rollback en caso de fallo al copiar

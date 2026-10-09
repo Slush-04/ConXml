@@ -3,6 +3,7 @@ import shutil
 
 from conxml.boveda import (
     copiar_xmls,
+    etiqueta_mes,
     inicializar_boveda,
     instrucciones_boveda_ocultas,
     ocultar_instrucciones_boveda,
@@ -36,20 +37,22 @@ def test_copia_xml_organizada_por_direccion_y_periodo(tmp_path, monkeypatch):
         assert carga.insertados == 1
 
 
-def test_boveda_crea_masivo_procesa_y_no_expone_archivos_pendientes(tmp_path, monkeypatch):
+def test_boveda_solo_crea_direcciones_y_migra_masivo_anterior(tmp_path, monkeypatch):
     monkeypatch.setenv("CONXML_DATA_DIR", str(tmp_path))
     config = Config()
     raiz = inicializar_boveda(config, "CLI-1")
-    assert (raiz / "Emitidos" / "Masivo").is_dir()
-    assert (raiz / "Recibidos" / "Masivo").is_dir()
+    assert sorted(p.name for p in raiz.iterdir()) == ["Emitidos", "Recibidos"]
 
+    (raiz / "Emitidos" / "Masivo").mkdir()
     shutil.copy2(FIXTURES / "ingreso_iva.xml", raiz / "Emitidos" / "Masivo" / "pendiente.xml")
     assert seleccionar_xmls(config, "CLI-1") == []
-    assert len(seleccionar_xmls(config, "CLI-1", "Masivo")) == 1
-    assert len(seleccionar_xmls(config, "CLI-1", "Masivo", "2024", "02")) == 1
+    assert seleccionar_xmls(config, "CLI-1", "Masivo") == []
     resultado = procesar_masivo(config, "CLI-1", "EKU9003173C9")
     assert resultado.copiados == 1
     assert len(seleccionar_xmls(config, "CLI-1", "Emitidos", "2024", "02")) == 1
+    assert not (raiz / "Emitidos" / "Masivo").exists()
+    assert etiqueta_mes("09") == "09-Sep"
+    assert etiqueta_mes("10") == "10-Oct"
 
 
 def test_preferencia_de_instrucciones_boveda(tmp_path, monkeypatch):

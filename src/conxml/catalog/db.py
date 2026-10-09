@@ -550,6 +550,7 @@ class Catalogo:
         rfc: str | None = None,
         serie: str | None = None,
         folio: str | None = None,
+        tipos: tuple[str, ...] | None = None,
     ) -> tuple[str, list[Any]]:
         where = " WHERE 1=1"
         params: list[Any] = []
@@ -559,6 +560,9 @@ class Catalogo:
         if tipo is not None:
             where += " AND tipo_comprobante = ?"
             params.append(tipo)
+        if tipos is not None:
+            where += " AND tipo_comprobante IN (" + ",".join("?" for _ in tipos) + ")"
+            params.extend(tipos)
         if desde is not None:
             where += " AND fecha >= ?"
             params.append(desde)
@@ -588,9 +592,10 @@ class Catalogo:
         rfc: str | None = None,
         serie: str | None = None,
         folio: str | None = None,
+        tipos: tuple[str, ...] | None = None,
     ) -> Iterator[sqlite3.Row]:
         where, params = self._filtros_consulta(
-            cliente, desde, hasta, tipo, sin_estatus, uuid, rfc, serie, folio
+            cliente, desde, hasta, tipo, sin_estatus, uuid, rfc, serie, folio, tipos
         )
         self.conn.row_factory = sqlite3.Row
         return self.conn.execute(
@@ -608,9 +613,10 @@ class Catalogo:
         rfc: str | None = None,
         serie: str | None = None,
         folio: str | None = None,
+        tipos: tuple[str, ...] | None = None,
     ) -> int:
         where, params = self._filtros_consulta(
-            cliente, desde, hasta, tipo, sin_estatus, uuid, rfc, serie, folio
+            cliente, desde, hasta, tipo, sin_estatus, uuid, rfc, serie, folio, tipos
         )
         return self.conn.execute(
             "SELECT COUNT(*) FROM comprobantes" + where, params

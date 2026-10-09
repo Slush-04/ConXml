@@ -63,3 +63,4 @@ conxml-*.spec
 # Local UI prefs
 data/preferencias.json
 data/boveda/
+data/clientes/

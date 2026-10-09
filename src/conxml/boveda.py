@@ -7,6 +7,7 @@ pantalla de bóveda.
 from __future__ import annotations
 
 import json
+import filecmp
 import re
 import shutil
 from dataclasses import dataclass, field
@@ -17,6 +18,16 @@ from conxml.config import Config
 
 DIRECCIONES = ("Recibidos", "Emitidos")
 CARPETA_MASIVO = "Masivo"
+MESES = ("Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
+
+
+def etiqueta_mes(mes: str) -> str:
+    """Presenta el mes sin cambiar el nombre numérico de las carpetas."""
+    try:
+        numero = int(mes)
+        return f"{numero:02d}-{MESES[numero - 1]}" if 1 <= numero <= 12 else mes
+    except (TypeError, ValueError):
+        return mes
 
 
 @dataclass
@@ -42,26 +53,43 @@ def inicializar_boveda(config: Config, cliente: str) -> Path:
     """Crea la estructura inicial de la bóveda para un cliente."""
     raiz = ruta_cliente(config, cliente)
     for direccion in DIRECCIONES:
-        (raiz / direccion / CARPETA_MASIVO).mkdir(parents=True, exist_ok=True)
+        (raiz / direccion).mkdir(parents=True, exist_ok=True)
     return raiz
 
 
 def rutas_masivo(config: Config, cliente: str) -> dict[str, Path]:
-    """Devuelve las carpetas donde se pueden pegar XML descargados del SAT."""
-    raiz = inicializar_boveda(config, cliente)
+    """Ubica carpetas heredadas para migrar XML sin volver a crearlas."""
+    raiz = ruta_cliente(config, cliente)
     return {direccion: raiz / direccion / CARPETA_MASIVO for direccion in DIRECCIONES}
 
 
 def procesar_masivo(config: Config, cliente: str, cliente_rfc: str = "") -> ResultadoBoveda:
-    """Clasifica los XML pegados en las dos carpetas ``Masivo``."""
+    """Migra XML de carpetas Masivo heredadas, sin perder archivos distintos."""
     resultado = ResultadoBoveda()
     for carpeta in rutas_masivo(config, cliente).values():
+        if not carpeta.is_dir():
+            continue
         parcial = copiar_xmls(carpeta, config, cliente, cliente_rfc)
         resultado.procesados += parcial.procesados
         resultado.copiados += parcial.copiados
         resultado.omitidos += parcial.omitidos
         resultado.errores += parcial.errores
         resultado.detalle_errores.extend(parcial.detalle_errores)
+        for archivo in carpeta.rglob("*.xml"):
+            try:
+                comprobante = parse_comprobante(archivo)
+                destino = ruta_cliente(config, cliente) / direccion_comprobante(
+                    comprobante.emisor_rfc, cliente_rfc,
+                ) / f"{comprobante.fecha.year:04d}" / f"{comprobante.fecha.month:02d}" / archivo.name
+                if destino.is_file() and filecmp.cmp(archivo, destino, shallow=False):
+                    archivo.unlink()
+            except (OSError, CFDIParseError):
+                continue
+        for subcarpeta in sorted(carpeta.rglob("*"), key=lambda ruta: len(ruta.parts), reverse=True):
+            if subcarpeta.is_dir() and not any(subcarpeta.iterdir()):
+                subcarpeta.rmdir()
+        if not any(carpeta.iterdir()):
+            carpeta.rmdir()
     return resultado
 
 
@@ -149,32 +177,18 @@ def seleccionar_xmls(
     Para Emitidos y Recibidos solo se consideran carpetas de año y mes:
     con mes ``Todos`` se incluyen XML sueltos en la carpeta del año y XML
     dentro de subcarpetas de mes; con un mes concreto solo se consulta esa
-    carpeta mensual. Los archivos de Masivo conservan su lectura recursiva.
+    carpeta mensual.
     """
     raiz = ruta_cliente(config, cliente)
     if not raiz.is_dir():
         return []
-    es_masivo = direccion == CARPETA_MASIVO
-    direcciones = DIRECCIONES if direccion in ("Todos", CARPETA_MASIVO) else (direccion,)
+    if direccion not in (*DIRECCIONES, "Todos"):
+        return []
+    direcciones = DIRECCIONES if direccion == "Todos" else (direccion,)
     archivos: list[Path] = []
     for actual in direcciones:
-        base = raiz / actual / CARPETA_MASIVO if es_masivo else raiz / actual
+        base = raiz / actual
         if not base.is_dir():
-            continue
-        if es_masivo:
-            for archivo in base.rglob("*.xml"):
-                if not archivo.is_file():
-                    continue
-                if anio != "Todos" or mes != "Todos":
-                    try:
-                        fecha = parse_comprobante(archivo).fecha
-                    except Exception:
-                        continue
-                    if anio != "Todos" and f"{fecha.year:04d}" != anio:
-                        continue
-                    if mes != "Todos" and f"{fecha.month:02d}" != mes:
-                        continue
-                archivos.append(archivo)
             continue
 
         # La vista anual se basa en las carpetas que realmente existen y

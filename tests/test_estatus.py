@@ -128,3 +128,101 @@ def test_lote_solo_cliente_seleccionado(tmp_path, monkeypatch):
     assert res.consultados == 4
     pendientes_cliente1 = list(catalogo.consulta(cliente="1", sin_estatus=True))
     assert len(pendientes_cliente1) == 3  # el cliente 1 no fue tocado
+
+def test_validacion_paralela_acotada_con_cache_y_progreso(tmp_path, monkeypatch):
+    import threading
+    catalogo = _poblada(tmp_path)
+    barrera = threading.Barrier(3, timeout=4)
+    lock = threading.Lock()
+    sesiones = {}
+    llamadas = []
+    propietario = threading.get_ident()
+    asignar = catalogo.asignar_estatus
+
+    def guardar(*args, **kwargs):
+        assert threading.get_ident() == propietario
+        return asignar(*args, **kwargs)
+
+    def fake(**kwargs):
+        hilo = threading.get_ident()
+        with lock:
+            anteriores = sesiones.setdefault(hilo, set())
+            anteriores.add(id(kwargs['session']))
+            llamadas.append(kwargs['uuid'])
+            primero = len(llamadas) <= 3
+        if primero:
+            barrera.wait()
+        return ResultadoEstatus(estado='Vigente')
+
+    monkeypatch.setattr(catalogo, 'asignar_estatus', guardar)
+    monkeypatch.setattr('conxml.sat.estatus.consultar', fake)
+    progreso = []
+    resultado = consultar_lote(catalogo, ConfigLote(delay_segundos=0, trabajadores=3, reintentos=0),
+                               progreso=lambda i, n: progreso.append((i, n)))
+    assert resultado.fallos == 0
+    assert resultado.consultados == len(llamadas) == 8
+    assert len(sesiones) == 3
+    assert len(set.union(*sesiones.values())) == 3
+    assert all(len(ids) == 1 for ids in sesiones.values())
+    assert progreso == [(i, 8) for i in range(1, 9)]
+    assert not list(catalogo.consulta(sin_estatus=True))
+    assert consultar_lote(catalogo, ConfigLote(delay_segundos=0, trabajadores=3)).consultados == 0
+    catalogo.close()
+
+
+def test_validacion_restringida_a_uuids_y_conjunto_vacio(tmp_path, monkeypatch):
+    catalogo = _poblada(tmp_path)
+    uuids = {fila['uuid'] for fila in catalogo.consulta(tipo='N')}
+    llamadas = []
+
+    def fake(**kwargs):
+        llamadas.append(kwargs['uuid'])
+        return ResultadoEstatus(estado='Vigente')
+
+    monkeypatch.setattr('conxml.sat.estatus.consultar', fake)
+    config = ConfigLote(delay_segundos=0, trabajadores=3)
+    assert consultar_lote(catalogo, config, uuids=set()).consultados == 0
+    assert consultar_lote(catalogo, config, uuids=uuids).consultados == len(uuids)
+    assert set(llamadas) == uuids
+    assert all(fila['tipo_comprobante'] != 'N' for fila in catalogo.consulta(sin_estatus=True))
+    catalogo.close()
+
+
+def test_fallo_paralelo_no_impide_guardar_otros_resultados(tmp_path, monkeypatch):
+    catalogo = _poblada(tmp_path)
+    pendiente = next(iter(catalogo.consulta()))['uuid']
+
+    def fake(**kwargs):
+        if kwargs['uuid'] == pendiente:
+            raise RuntimeError('Servicio no disponible')
+        return ResultadoEstatus(estado='Vigente')
+
+    monkeypatch.setattr('conxml.sat.estatus.consultar', fake)
+    resultado = consultar_lote(catalogo, ConfigLote(delay_segundos=0, trabajadores=3, reintentos=0))
+    assert resultado.consultados == 7 and resultado.fallos == 1
+    assert [fila['uuid'] for fila in catalogo.consulta(sin_estatus=True)] == [pendiente]
+    catalogo.close()
+
+
+def test_reintento_respeta_espera_del_servicio(monkeypatch):
+    import requests
+    from conxml.sat.estatus import _consultar_con_reintentos
+    llamadas = []
+    esperas = []
+
+    def fake(**kwargs):
+        llamadas.append(kwargs)
+        if len(llamadas) == 1:
+            respuesta = requests.Response()
+            respuesta.status_code = 429
+            respuesta.headers['Retry-After'] = '5'
+            raise requests.HTTPError(response=respuesta)
+        return ResultadoEstatus(estado='Vigente')
+
+    monkeypatch.setattr('conxml.sat.estatus.consultar', fake)
+    monkeypatch.setattr('conxml.sat.estatus.time.sleep', esperas.append)
+    with requests.Session() as sesion:
+        estado = _consultar_con_reintentos(
+            {'uuid': 'test', 'emisor_rfc': '', 'receptor_rfc': '', 'total': '0'},
+            ConfigLote(delay_segundos=0.3), sesion)
+    assert estado.es_vigente and esperas == [5]

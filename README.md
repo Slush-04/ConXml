@@ -58,10 +58,10 @@ Cuenta con una **interfaz gráfica moderna** y personalizable (GUI) y con una **
   un cliente guardado, se abre una ventana independiente para seleccionar el cliente activo;
   desde esa ventana se pueden crear y editar la clave, nombre y RFC de cada cliente.
   Ya dentro del programa, **Cambiar cliente** vuelve a abrir esa ventana sin cerrar la aplicación.
-- **Bóveda** copia carpetas masivas y organiza los XML en
-  `boveda/<cliente>/Recibidos|Emitidos/<año>/<mes>/`. También crea las carpetas
-  `Emitidos/Masivo` y `Recibidos/Masivo` para pegar XML descargados del SAT y
-  revisarlos desde la pantalla Bóveda. La pantalla también permite examinar
+- **Bóveda** copia carpetas externas y organiza los XML en
+  `boveda/<cliente>/Recibidos|Emitidos/<año>/<mes>/`. Las carpetas antiguas
+  `Masivo` se migran al abrir la Bóveda, sin eliminar XML que no se puedan
+  copiar de forma idéntica. La pantalla también permite examinar
   cualquier carpeta externa y cargar directamente los XML seleccionados a
   Administración de XML.
 - La selección de dirección, año y mes se carga al catálogo con un botón; así

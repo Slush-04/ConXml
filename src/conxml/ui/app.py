@@ -345,6 +345,7 @@ class ConXmlApp(ctk.CTkFrame):
         self._btn_sidebar.pack(side="right", padx=8)
 
         master.protocol("WM_DELETE_WINDOW", self._al_cerrar)
+        master.bind("<Escape>", self._restaurar_tabla)
         self._poll_after = self.after(80, self._procesar_cola)
         self._pantalla_actual: ctk.CTkFrame | tk.Frame | None = None
         clave_inicial = sesion.get('pantalla', 'resumen')
@@ -408,7 +409,18 @@ class ConXmlApp(ctk.CTkFrame):
             return TITULO_GRUPO_BREVE.get(clave_grupo, base)
         return base
 
+    def _restaurar_tabla(self, _event=None):
+        pantalla = self._pantalla_actual
+        if getattr(pantalla, "_tabla_ampliada", False):
+            pantalla.al_ocultar()
+            return "break"
+
     def navegar(self, clave: str, primero: bool = False) -> None:
+        anterior = self._pantalla_actual
+        if anterior is not None and anterior is not self._pantallas[clave]:
+            al_ocultar = getattr(anterior, "al_ocultar", None)
+            if callable(al_ocultar):
+                al_ocultar()
         self._clave_pantalla = clave
         if clave in self._grupo_de:
             self._expandir_grupo(self._grupo_de[clave])

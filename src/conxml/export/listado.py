@@ -232,10 +232,11 @@ def exportar_listado(
     cliente: str | None = None,
     desde: str | None = None,
     hasta: str | None = None,
+    tipos: tuple[str, ...] | None = None,
 ) -> Path:
     """Genera un Excel con el listado general (47 columnas, paridad Mi Admin XML)."""
     destino = Path(destino)
-    filas = catalogo.consulta(cliente=cliente, desde=desde, hasta=hasta)
+    filas = catalogo.consulta(cliente=cliente, desde=desde, hasta=hasta, tipos=tipos)
 
     wb = Workbook()
     ws = wb.active

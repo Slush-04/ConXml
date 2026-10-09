@@ -14,6 +14,7 @@ from conxml import estado_local
 from conxml.archivos import abrir_local
 from conxml.respaldos import crear_respaldo, restaurar_respaldo
 from conxml.ui import theme as th
+from conxml.ui.scroll import PaginaDesplazable
 from conxml.ui.widgets import (
     BotonPrimario, BotonSecundario, Encabezado, PanelCard, ResumenOperacion,
     BarraAdaptable, texto_adaptable,
@@ -26,7 +27,7 @@ class PantallaAjustes(ctk.CTkFrame):
         self.app = app
         self.botones: list = []
 
-        contenedor = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        contenedor = PaginaDesplazable(self, fg_color="transparent")
         contenedor.pack(fill="both", expand=True, padx=16, pady=16)
         self._contenedor = contenedor
 

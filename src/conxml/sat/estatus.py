@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import sqlite3
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -22,6 +24,7 @@ class ConfigLote:
     delay_segundos: float = 2.0
     reintentos: int = 2
     timeout: float = 15.0
+    trabajadores: int = 1
 
 
 @dataclass
@@ -41,6 +44,7 @@ def consultar_lote(
     cliente: str | None = None,
     force: bool = False,
     progreso: Callable[[int, int], None] | None = None,
+    uuids: set[str] | None = None,
 ) -> ResultadoLote:
     """Consulta el estatus de los comprobantes del catálogo sin estatus.
 
@@ -48,50 +52,93 @@ def consultar_lote(
     Con `force=True` re-consulta también los ya validados. `cliente` limita
     la consulta a un cliente. Solo persisten los estados finales
     (Vigente/Cancelado/No Encontrado); "Desconocido" y errores de red no se
-    escriben, de modo que se reintentan en la siguiente corrida. Sin
-    `progreso` es llamable como fn(procesados, total).
+    escriben, de modo que se reintentan en la siguiente corrida.
+    `uuids` limita la consulta a la selección/vista (vacío no consulta nada).
+    `progreso` recibe los completados, incluidos fallos, como fn(procesados, total).
     """
     config = config or ConfigLote()
-    total = catalogo.contar_consulta(cliente=cliente, sin_estatus=not force)
-    registros = catalogo.consulta(cliente=cliente, sin_estatus=not force)
+    # Materializar antes de crear hilos: SQLite se consulta y escribe únicamente
+    # desde el hilo dueño del catálogo. Un conjunto vacío no valida todo.
+    registros = [
+        {clave: fila[clave] for clave in ("uuid", "emisor_rfc", "receptor_rfc", "total")}
+        for fila in catalogo.consulta(cliente=cliente, sin_estatus=not force)
+        if uuids is None or fila["uuid"] in uuids
+    ]
+    total = len(registros)
     resultado = ResultadoLote()
-
-    with requests.Session() as sesion:
-        for indice, fila in enumerate(registros, start=1):
-            if progreso is not None:
-                progreso(indice, total)
-            try:
-                estatus_sat = _consultar_con_reintentos(
-                    fila, config=config, sesion=sesion
+    for indice, (fila, estatus_sat, error) in enumerate(_consultar_registros(registros, config), start=1):
+        if error is not None:
+            resultado.fallos += 1
+            if len(resultado.detalle) < DETALLE_MAX:
+                resultado.detalle.append(f"{fila['uuid']}: {error}")
+        else:
+            resultado.consultados += 1
+            if estatus_sat.es_vigente:
+                resultado.vigentes += 1
+            elif estatus_sat.es_cancelado:
+                resultado.cancelados += 1
+            elif estatus_sat.estado == "No Encontrado":
+                resultado.no_encontrados += 1
+            else:
+                resultado.desconocidos += 1
+            if estatus_sat.estado in ESTADOS_FINALES:
+                catalogo.asignar_estatus(
+                    fila["uuid"], estatus_sat.estado,
+                    es_cancelable=estatus_sat.es_cancelable,
+                    estatus_cancelacion=estatus_sat.estatus_cancelacion,
                 )
-                resultado.consultados += 1
-                if estatus_sat.es_vigente:
-                    resultado.vigentes += 1
-                elif estatus_sat.es_cancelado:
-                    resultado.cancelados += 1
-                elif estatus_sat.estado == "No Encontrado":
-                    resultado.no_encontrados += 1
-                else:
-                    resultado.desconocidos += 1
-
-                if estatus_sat.estado in ESTADOS_FINALES:
-                    catalogo.asignar_estatus(
-                        fila["uuid"],
-                        estatus_sat.estado,
-                        es_cancelable=estatus_sat.es_cancelable,
-                        estatus_cancelacion=estatus_sat.estatus_cancelacion,
-                    )
-                    if resultado.consultados % COMMIT_CADENCIA == 0:
-                        catalogo.commit()
-            except Exception as exc:  # noqa: BLE001 — nunca abortar el lote por un folio
-                resultado.fallos += 1
-                if len(resultado.detalle) < DETALLE_MAX:
-                    resultado.detalle.append(f"{fila['uuid']}: {exc}")
-            if indice < total and config.delay_segundos:
-                time.sleep(config.delay_segundos)
+                if resultado.consultados % COMMIT_CADENCIA == 0:
+                    catalogo.commit()
+        if progreso is not None:
+            progreso(indice, total)
 
     catalogo.commit()
     return resultado
+
+
+def _consultar_registros(registros, config):
+    """Concurrencia acotada y una sesión HTTP reutilizable por trabajador."""
+    if not registros:
+        return
+    trabajadores = min(3, max(1, config.trabajadores), len(registros))
+    local = threading.local()
+    sesiones = []
+
+    def inicializar():
+        local.sesion = requests.Session()
+        local.usada = False
+        sesiones.append(local.sesion)
+
+    def consultar_fila(fila):
+        if local.usada and config.delay_segundos > 0:
+            time.sleep(config.delay_segundos)
+        local.usada = True
+        try:
+            respuesta = _consultar_con_reintentos(fila, config=config, sesion=local.sesion)
+            return fila, respuesta, None
+        except Exception as exc:
+            return fila, None, exc
+
+    try:
+        if trabajadores == 1:
+            inicializar()
+            for fila in registros:
+                yield consultar_fila(fila)
+        else:
+            # No encolar todo el catálogo: como máximo hay tres solicitudes en vuelo.
+            with ThreadPoolExecutor(max_workers=trabajadores, initializer=inicializar) as executor:
+                pendientes = iter(registros)
+                futuros = {executor.submit(consultar_fila, next(pendientes)) for _ in range(trabajadores)}
+                while futuros:
+                    terminados, futuros = wait(futuros, return_when=FIRST_COMPLETED)
+                    for futuro in terminados:
+                        yield futuro.result()
+                        fila = next(pendientes, None)
+                        if fila is not None:
+                            futuros.add(executor.submit(consultar_fila, fila))
+    finally:
+        for sesion in sesiones:
+            sesion.close()
 
 
 def _consultar_con_reintentos(
@@ -108,7 +155,14 @@ def _consultar_con_reintentos(
                 timeout=config.timeout,
                 session=sesion,
             )
-        except Exception:
+        except Exception as exc:
             if intento == config.reintentos:
                 raise
-            time.sleep(min(2**intento, config.delay_segundos or 1.0))
+            espera = min(2 ** intento, 8)
+            respuesta = getattr(exc, "response", None)
+            if respuesta is not None and respuesta.status_code in (429, 503):
+                try:
+                    espera = max(espera, min(60, float(respuesta.headers.get("Retry-After", 0))))
+                except (TypeError, ValueError):
+                    pass
+            time.sleep(espera)

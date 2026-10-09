@@ -18,12 +18,13 @@ de macOS es `~/Library/Application Support/ConXml/`. La bóveda queda en:
 boveda/
 └── <cliente>/
     ├── Emitidos/
-    │   ├── Masivo/*.xml
     │   └── <año>/<mes>/*.xml
     └── Recibidos/
-        ├── Masivo/*.xml
         └── <año>/<mes>/*.xml
 ```
+
+La e.firma que el usuario decide guardar permanece en
+`<datos-locales>/clientes/<cliente>/efirma/`. La contraseña no se guarda.
 
 El catálogo conserva la clave del cliente en cada comprobante. Las bases creadas
 por versiones anteriores se migran automáticamente a la tabla editable de
@@ -32,9 +33,9 @@ clientes.
 ## Flujo de trabajo
 
 1. Se selecciona o crea el cliente en una ventana independiente que aparece al iniciar.
-2. Se pegan los XML descargados del SAT en `Emitidos/Masivo` o `Recibidos/Masivo`.
-3. Bóveda permite examinar una carpeta externa o filtrar `Emitidos`, `Recibidos`
-   y `Masivo` dentro de la estructura local.
+2. Se importa una carpeta externa con XML o se recuperan paquetes desde Descarga SAT.
+3. Bóveda permite examinar esa carpeta externa o filtrar `Emitidos` y `Recibidos`
+   dentro de la estructura local. Los meses se presentan como `09-Sep`, `10-Oct`.
 4. El usuario filtra dirección, año y mes, y carga esa selección al catálogo.
 5. Administración XML muestra el cliente activo y permite buscar por UUID, RFC,
    serie y folio.

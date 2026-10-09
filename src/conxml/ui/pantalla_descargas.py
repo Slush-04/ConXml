@@ -9,6 +9,7 @@ import customtkinter as ctk
 
 from conxml.catalog.db import Catalogo
 from conxml.config import Config
+from conxml.sat.boveda_firma import archivos_guardados, guardar_archivos, quitar_archivos, carpeta_firma
 from conxml.sat.descarga_masiva import (
     ClienteDescargaSAT,
     CredencialEFirma,
@@ -20,9 +21,10 @@ from conxml.sat.seguimiento import ResultadoSeguimiento, procesar_solicitud
 from conxml.ui import responsive as resp
 from conxml.ui import theme as th
 from conxml.ui.selector_fecha import SelectorFecha
+from conxml.ui.scroll import PaginaDesplazable
 from conxml.ui.widgets import (
     BotonPrimario, BotonSecundario, Encabezado, Insignia, PanelCard,
-    BarraAdaptable, texto_adaptable,
+    texto_adaptable,
 )
 
 ESTADOS = {
@@ -40,7 +42,9 @@ class PantallaDescargas(ctk.CTkFrame):
         self._firmas_activas: dict[str, CredencialEFirma] = {}
         self._revision_after: str | None = None
         self._rfc_visible = ""
-        self._contenedor = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self._cliente_firma_visible: str | None = None
+        self._modo_formulario_apilado: bool | None = None
+        self._contenedor = PaginaDesplazable(self, fg_color="transparent")
         self._contenedor.pack(fill="both", expand=True, padx=16, pady=16)
         Encabezado(
             self._contenedor, "Descarga SAT",
@@ -54,67 +58,80 @@ class PantallaDescargas(ctk.CTkFrame):
         self._destino_lbl = ctk.CTkLabel(self._contenedor, text="", anchor="w", justify="left", wraplength=650, text_color=th.TEXTO_SECUNDARIO)
         self._destino_lbl.pack(fill="x", padx=8, pady=(0, 8))
 
-        cred = PanelCard(self._contenedor)
-        cred.pack(fill="x", pady=(8, 10))
-        cred.columnconfigure(1, weight=1)
-        ctk.CTkLabel(cred, text="01  ·  Acceso con e.firma", font=(th.FUENTE, th.TAM_H3, "bold")).grid(row=0, column=0, columnspan=3, sticky="w", padx=16, pady=(12, 4))
+        formulario = PanelCard(self._contenedor)
+        formulario.pack(fill="x", pady=(8, 10))
+        formulario.columnconfigure(0, weight=1, uniform="formularios")
+        formulario.columnconfigure(2, weight=1, uniform="formularios")
+        self._formulario = formulario
+        cred = ctk.CTkFrame(formulario, fg_color="transparent")
+        cred.grid(row=0, column=0, sticky="nsew", padx=(16, 12), pady=14)
+        cred.columnconfigure(0, weight=1)
+        self._panel_cred = cred
+        self._separador_formulario = ctk.CTkFrame(formulario, width=1, fg_color=th.BORDE)
+        self._separador_formulario.grid(row=0, column=1, sticky="ns", pady=16)
+        ctk.CTkLabel(cred, text="01  ·  Acceso con e.firma", font=(th.FUENTE, th.TAM_H3, "bold"), anchor="w").grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         self._cer = tk.StringVar()
         self._key = tk.StringVar()
         self._password = tk.StringVar()
-        ctk.CTkLabel(cred, text="Certificado e.firma (.cer)", text_color=th.TEXTO).grid(row=1, column=0, padx=(16, 8), pady=(12, 6), sticky="w")
-        ctk.CTkEntry(cred, textvariable=self._cer, placeholder_text="Selecciona el archivo .cer").grid(row=1, column=1, padx=8, pady=(12, 6), sticky="ew")
-        BotonSecundario(cred, "Examinar", self._elegir_cer).grid(row=1, column=2, padx=(0, 16), pady=(12, 6))
-        ctk.CTkLabel(cred, text="Llave privada (.key)", text_color=th.TEXTO).grid(row=2, column=0, padx=(16, 8), pady=6, sticky="w")
-        ctk.CTkEntry(cred, textvariable=self._key, placeholder_text="Selecciona el archivo .key").grid(row=2, column=1, padx=8, pady=6, sticky="ew")
-        BotonSecundario(cred, "Examinar", self._elegir_key).grid(row=2, column=2, padx=(0, 16), pady=6)
-        ctk.CTkLabel(cred, text="Contraseña de .key", text_color=th.TEXTO).grid(row=3, column=0, padx=(16, 8), pady=(6, 12), sticky="w")
-        ctk.CTkEntry(cred, textvariable=self._password, show="●", placeholder_text="Se usa solo durante la operación").grid(row=3, column=1, padx=8, pady=(6, 12), sticky="ew")
-        ctk.CTkLabel(
-            cred, text="ConXml no guarda la contraseña ni copia la llave privada. El seguimiento conserva la e.firma en memoria hasta detenerlo o cerrar la aplicación.",
-            text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA),
-            justify="left", wraplength=750,
-        ).grid(row=4, column=0, columnspan=3, padx=16, pady=(0, 12), sticky="w")
+        ctk.CTkLabel(cred, text="Certificado e.firma (.cer)", text_color=th.TEXTO, anchor="w").grid(row=1, column=0, columnspan=2, sticky="ew")
+        ctk.CTkEntry(cred, textvariable=self._cer, placeholder_text="Selecciona el archivo .cer").grid(row=2, column=0, padx=(0, 8), pady=(2, 8), sticky="ew")
+        BotonSecundario(cred, "Examinar", self._elegir_cer).grid(row=2, column=1, pady=(2, 8))
+        ctk.CTkLabel(cred, text="Llave privada (.key)", text_color=th.TEXTO, anchor="w").grid(row=3, column=0, columnspan=2, sticky="ew")
+        ctk.CTkEntry(cred, textvariable=self._key, placeholder_text="Selecciona el archivo .key").grid(row=4, column=0, padx=(0, 8), pady=(2, 8), sticky="ew")
+        BotonSecundario(cred, "Examinar", self._elegir_key).grid(row=4, column=1, pady=(2, 8))
+        ctk.CTkLabel(cred, text="Contraseña de .key", text_color=th.TEXTO, anchor="w").grid(row=5, column=0, columnspan=2, sticky="ew")
+        ctk.CTkEntry(cred, textvariable=self._password, show="●", placeholder_text="Se usa solo durante la operación").grid(row=6, column=0, columnspan=2, pady=(2, 8), sticky="ew")
+        acciones_firma = ctk.CTkFrame(cred, fg_color="transparent")
+        acciones_firma.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+        self._btn_guardar_firma = BotonSecundario(acciones_firma, "Guardar e.firma", self._guardar_archivos_firma)
+        self._btn_guardar_firma.pack(side="left", padx=(0, 8))
+        self._btn_quitar_firma = BotonSecundario(acciones_firma, "Quitar guardada", self._quitar_archivos_firma)
+        self._btn_quitar_firma.pack(side="left")
+        self._firma_local_lbl = ctk.CTkLabel(cred, text="", text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA), anchor="w", justify="left", wraplength=430)
+        self._firma_local_lbl.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(0, 4))
         self._btn_seguimiento = BotonSecundario(
             cred, "Activar seguimiento", self._alternar_seguimiento,
         )
-        self._btn_seguimiento.grid(row=5, column=0, padx=16, pady=(0, 12), sticky="w")
+        self._btn_seguimiento.grid(row=9, column=0, columnspan=2, pady=(0, 4), sticky="w")
         self._seguimiento_lbl = ctk.CTkLabel(
             cred, text="Para vigilar solicitudes anteriores, ingresa la contraseña una vez y activa el seguimiento.",
             text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA),
-            anchor="w", justify="left", wraplength=550,
+            anchor="w", justify="left", wraplength=430,
         )
-        self._seguimiento_lbl.grid(row=5, column=1, columnspan=2, sticky="ew", padx=(0, 16), pady=(0, 12))
+        self._seguimiento_lbl.grid(row=10, column=0, columnspan=2, sticky="ew")
 
-        solicitud = PanelCard(self._contenedor)
-        solicitud.pack(fill="x", pady=(0, 10))
+        solicitud = ctk.CTkFrame(formulario, fg_color="transparent")
+        solicitud.grid(row=0, column=2, sticky="nsew", padx=(12, 16), pady=14)
         solicitud.columnconfigure(0, weight=1)
+        self._panel_solicitud = solicitud
         ctk.CTkLabel(solicitud, text="02  ·  Periodo y comprobantes", font=(th.FUENTE, th.TAM_H3, "bold")).grid(
-            row=0, column=0, sticky="w", padx=16, pady=(12, 4))
+            row=0, column=0, sticky="w", pady=(0, 10))
         self._direccion = tk.StringVar(value="Emitidos")
         self._desde = tk.StringVar(value=date.today().replace(day=1).strftime("%d/%m/%Y"))
         self._hasta = tk.StringVar(value=date.today().strftime("%d/%m/%Y"))
         self._tipo = tk.StringVar(value="Todos")
-        campos = BarraAdaptable(solicitud)
-        campos.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 8))
-        for etiqueta, variable, valores in (("Dirección", self._direccion, ["Emitidos", "Recibidos"]),
+        campos = ctk.CTkFrame(solicitud, fg_color="transparent")
+        campos.grid(row=1, column=0, sticky="ew")
+        campos.columnconfigure((0, 1), weight=1, uniform="campos_sat")
+        for indice, (etiqueta, variable, valores) in enumerate((("Dirección", self._direccion, ["Emitidos", "Recibidos"]),
                                             ("Tipo CFDI", self._tipo, list(TIPOS)),
                                             ("Desde · DD/MM/AAAA", self._desde, None),
-                                            ("Hasta · DD/MM/AAAA", self._hasta, None)):
+                                            ("Hasta · DD/MM/AAAA", self._hasta, None))):
             grupo = ctk.CTkFrame(campos, fg_color="transparent")
+            grupo.grid(row=indice // 2, column=indice % 2, sticky="ew", padx=(0, 8) if indice % 2 == 0 else (8, 0), pady=(0, 10))
             ctk.CTkLabel(grupo, text=etiqueta, text_color=th.TEXTO_SECUNDARIO,
                          font=(th.FUENTE, th.TAM_NOTA)).pack(anchor="w")
             if valores:
-                entrada = ctk.CTkComboBox(grupo, variable=variable, values=valores, width=150, height=34)
+                entrada = ctk.CTkComboBox(grupo, variable=variable, values=valores, height=34)
             else:
                 entrada = SelectorFecha(grupo, variable=variable, anio_completo=True)
             entrada.pack(fill="x", pady=(2, 0))
-            campos.agregar(grupo)
         ctk.CTkLabel(
             solicitud, text="Para CFDI recibidos, el SAT permite descargar XML vigentes.",
-            text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA),
-        ).grid(row=3, column=0, sticky="w", padx=16, pady=(0, 12))
+            text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA), anchor="w",
+        ).grid(row=3, column=0, sticky="ew", pady=(4, 0))
         self._btn_solicitar = BotonPrimario(solicitud, "Solicitar al SAT", self._solicitar)
-        self._btn_solicitar.grid(row=2, column=0, sticky="e", padx=16, pady=(0, 12))
+        self._btn_solicitar.grid(row=2, column=0, sticky="e", pady=(4, 0))
 
         historial = PanelCard(self._contenedor)
         historial.pack(fill="both", expand=True, pady=(0, 8))
@@ -134,7 +151,7 @@ class PantallaDescargas(ctk.CTkFrame):
         marco.rowconfigure(0, weight=1); marco.columnconfigure(0, weight=1)
         self._tabla = ttk.Treeview(
             marco, columns=("id", "direccion", "periodo", "estado", "cfdis", "mensaje"),
-            show="headings", selectmode="browse", height=8, style="Solicitudes.Treeview",
+            show="headings", selectmode="browse", height=12, style="Solicitudes.Treeview",
         )
         for col, titulo, ancho in (
             ("id", "Solicitud SAT", 165), ("direccion", "Tipo", 76),
@@ -155,10 +172,30 @@ class PantallaDescargas(ctk.CTkFrame):
         texto_adaptable(self._cliente_lbl, self._contenedor)
         texto_adaptable(self._destino_lbl, self._contenedor)
         self.botones = [self._btn_solicitar, self._btn_verificar, self._btn_seguimiento]
+        self.bind("<Configure>", lambda evento: self._acomodar_formulario(evento.width), add="+")
 
     def aplicar_modo_compacto(self, ancho_compacto: bool, alto_compacto: bool) -> None:
         compacto = ancho_compacto or alto_compacto
         self._contenedor.pack(padx=8 if compacto else 16, pady=8 if compacto else 16)
+        self._acomodar_formulario(self.winfo_width())
+
+    def _acomodar_formulario(self, ancho: int) -> None:
+        apilado = ancho < 1060
+        if apilado == self._modo_formulario_apilado:
+            return
+        self._modo_formulario_apilado = apilado
+        if apilado:
+            self._formulario.columnconfigure(0, weight=1, uniform="")
+            self._formulario.columnconfigure(2, weight=0, uniform="")
+            self._panel_cred.grid_configure(row=0, column=0, columnspan=3, padx=16, pady=(14, 8))
+            self._separador_formulario.grid_remove()
+            self._panel_solicitud.grid_configure(row=1, column=0, columnspan=3, padx=16, pady=(8, 14))
+        else:
+            self._formulario.columnconfigure(0, weight=1, uniform="formularios")
+            self._formulario.columnconfigure(2, weight=1, uniform="formularios")
+            self._panel_cred.grid_configure(row=0, column=0, columnspan=1, padx=(16, 12), pady=14)
+            self._separador_formulario.grid(row=0, column=1, sticky="ns", pady=16)
+            self._panel_solicitud.grid_configure(row=0, column=2, columnspan=1, padx=(12, 16), pady=14)
 
     def al_mostrar(self) -> None:
         cliente = self.app.cliente_actual
@@ -171,6 +208,7 @@ class PantallaDescargas(ctk.CTkFrame):
             solicitudes = catalogo.solicitudes_descarga_cliente(cliente)
         self._cliente_lbl.configure(text=f"Cliente activo: {detalle['nombre'] if detalle else cliente} · RFC: {rfc or 'falta registrar'}")
         self._rfc_visible = rfc
+        self._mostrar_firma_cliente(cliente)
         self._actualizar_aviso_seguimiento()
         config = Config()
         modo = "ZIP sin extraer" if config.modo_descarga_sat == "zip" else "XML organizados e importados"
@@ -308,6 +346,56 @@ class PantallaDescargas(ctk.CTkFrame):
         ruta = filedialog.askopenfilename(parent=self, title="Seleccionar llave privada e.firma", filetypes=[("Llave privada SAT", "*.key"), ("Todos los archivos", "*.*")])
         if ruta:
             self._key.set(ruta)
+
+    def _mostrar_firma_cliente(self, cliente: str) -> None:
+        if cliente != self._cliente_firma_visible:
+            self._cliente_firma_visible = cliente
+            self._password.set("")
+            guardados = archivos_guardados(Config(), cliente)
+            self._cer.set(str(guardados[0]) if guardados else "")
+            self._key.set(str(guardados[1]) if guardados else "")
+        guardados = archivos_guardados(Config(), cliente)
+        self._firma_local_lbl.configure(text=(
+            "e.firma guardada para este cliente. La contraseña se solicita en cada sesión."
+            if guardados else "Sin e.firma guardada para este cliente. Selecciona ambos archivos y pulsa Guardar e.firma."
+        ))
+        self._btn_quitar_firma.configure(state="normal" if guardados else "disabled")
+
+    def _guardar_archivos_firma(self) -> None:
+        try:
+            cliente, rfc = self._datos_cliente()
+            cer, key, password = self._credenciales()
+            fiel = CredencialEFirma.cargar(cer, key, password)
+            if fiel.rfc != rfc:
+                raise ErrorDescargaSAT("El RFC del certificado no corresponde al cliente activo.")
+            cer_local, key_local = guardar_archivos(Config(), cliente, cer, key)
+        except (ErrorDescargaSAT, ValueError, OSError) as exc:
+            messagebox.showerror("e.firma local", str(exc), parent=self)
+            return
+        self._cer.set(str(cer_local))
+        self._key.set(str(key_local))
+        self._mostrar_firma_cliente(cliente)
+        messagebox.showinfo("e.firma local", f"Archivos guardados para este cliente en:\n{carpeta_firma(Config(), cliente)}\n\nLa contraseña no se guardó.", parent=self)
+
+    def _quitar_archivos_firma(self) -> None:
+        cliente = self.app.cliente_actual
+        if not cliente:
+            return
+        guardados = archivos_guardados(Config(), cliente)
+        if not guardados:
+            return
+        if not messagebox.askyesno("e.firma local", "¿Quitar el certificado y la llave privada guardados para este cliente?", parent=self):
+            return
+        try:
+            quitar_archivos(Config(), cliente)
+        except OSError as exc:
+            messagebox.showerror("e.firma local", str(exc), parent=self)
+            return
+        if self._cer.get() == str(guardados[0]):
+            self._cer.set("")
+        if self._key.get() == str(guardados[1]):
+            self._key.set("")
+        self._mostrar_firma_cliente(cliente)
 
     def _credenciales(self) -> tuple[str, str, str]:
         cer, key, password = self._cer.get().strip(), self._key.get().strip(), self._password.get()

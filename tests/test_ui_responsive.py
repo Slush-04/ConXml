@@ -125,6 +125,36 @@ def test_pestanas_desplazables_conservan_ancho_al_cambiar_modo(tmp_path, monkeyp
         _destruir(raiz)
 
 
+@pytest.mark.skipif(_ESCRITORIO_WINDOWS_CI, reason="El escritorio virtual de CI no admite la geometría física.")
+def test_descargas_usa_dos_paneles_y_permite_desplazarse(tmp_path, monkeypatch):
+    raiz, app = _crear_app(tmp_path, monkeypatch)
+    try:
+        app.cliente_actual = "CLI-1"
+        app.navegar("descargas")
+        raiz.geometry("1500x900")
+        raiz.update()
+        pantalla = app._pantallas["descargas"]
+        assert pantalla._panel_cred.grid_info()["row"] == pantalla._panel_solicitud.grid_info()["row"]
+        assert pantalla._panel_cred.grid_info()["column"] != pantalla._panel_solicitud.grid_info()["column"]
+
+        raiz.geometry("900x650")
+        raiz.update()
+        assert pantalla._panel_solicitud.grid_info()["row"] > pantalla._panel_cred.grid_info()["row"]
+        canvas = pantalla._contenedor._parent_canvas
+        assert canvas.yview()[1] < 1.0
+        anterior = canvas.yview()[0]
+        delta = -120 if sys.platform == "win32" else -1
+        pantalla._cliente_lbl.event_generate("<MouseWheel>", delta=delta)
+        raiz.update()
+        assert canvas.yview()[0] > anterior
+        anterior = canvas.yview()[0]
+        pantalla._tabla.event_generate("<MouseWheel>", delta=delta)
+        raiz.update()
+        assert canvas.yview()[0] > anterior
+    finally:
+        _destruir(raiz)
+
+
 @pytest.mark.skipif(_ESCRITORIO_WINDOWS_CI, reason="El escritorio virtual de CI no admite la geometría física; validar en una pantalla Windows local.")
 def test_sidebar_compacto_y_recuperacion(tmp_path, monkeypatch):
     raiz, app = _crear_app(tmp_path, monkeypatch)
