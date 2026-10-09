@@ -167,10 +167,10 @@ function Set-UpdateStatus($message, $percent = -1) {{
 
 function Show-UpdateFailure($message) {{
     Write-Log "ERROR: $message"
-    if ($null -ne $form) {{
+    if ($null -ne $form -and ${str(show_completion).lower()}) {{
         [System.Windows.Forms.MessageBox]::Show("$message`n`nRevisa el diagnóstico en:`n$LogFile", "No se pudo actualizar ConXml", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
-        $form.Close()
     }}
+    if ($null -ne $form) {{ $form.Close() }}
 }}
 
 function Get-InstalledVersion($cliExe) {{

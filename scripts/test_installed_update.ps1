@@ -26,7 +26,7 @@ from conxml.estado_local import guardar
 Config().inicializar()
 with Catalogo(Config().db_path) as catalogo:
     catalogo.crear_cliente('SMOKE', 'Prueba instalador', 'EKU9003173C9')
-guardar({'sesion': {'cliente': 'SMOKE'}})
+guardar({'sesion': {'cliente': 'SMOKE'}, 'respaldo_al_cerrar': False})
 '@
 & $py -c $prepare
 if ($LASTEXITCODE -ne 0) { throw 'No se preparó la sesión de prueba' }
@@ -58,12 +58,24 @@ print(generar_script_actualizador(root / 'update.ps1',
     $deadline = (Get-Date).AddSeconds(20)
     do {
         $appProcesses = @(Get-Process | Where-Object { $_.Path -eq (Join-Path $target 'conxml.exe') })
-        $windows = @($appProcesses | Where-Object { $_.MainWindowHandle -ne 0 })
+        $windows = @($appProcesses | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like 'ConXml*Gestor CFDI*' })
         if ($windows.Count -gt 0) { break }
         Start-Sleep -Milliseconds 500
     } while ((Get-Date) -lt $deadline)
     if ($windows.Count -eq 0) { throw 'La instalación inicial no abrió la GUI' }
-    foreach ($window in $windows) { $null = $window.CloseMainWindow() }
+    # MainWindowHandle puede existir mientras se construye la interfaz y todavía
+    # no se ha instalado WM_DELETE_WINDOW. Esperar a Tk y al resumen inicial.
+    $appLog = Join-Path $env:CONXML_LOG_DIR 'conxml.log'
+    while (-not (Select-String -LiteralPath $appLog -Pattern 'Iniciando ciclo de eventos de Tk' -Quiet)) {
+        if ((Get-Date) -ge $deadline) { throw 'La GUI no completó su arranque' }
+        Start-Sleep -Milliseconds 250
+    }
+    Start-Sleep -Seconds 3
+    foreach ($window in $windows) {
+        $window.Refresh()
+        Write-Host "Cerrando PID $($window.Id): $($window.MainWindowTitle)"
+        if (-not $window.CloseMainWindow()) { throw 'La ventana rechazó el cierre' }
+    }
     if (-not $helper.WaitForExit(120000)) { throw 'Timeout del helper' }
     if ($helper.ExitCode -ne 0) { throw 'Falló actualización: consultar update.log' }
     if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'datos intactos') { throw 'Datos modificados' }
@@ -72,6 +84,10 @@ print(generar_script_actualizador(root / 'update.ps1',
     }
     Write-Host 'Setup, cierre onefile, reemplazo, versión, GUI y datos: OK'
 } finally {
+    Get-ChildItem -LiteralPath $testRoot -Filter '*.log' -Recurse | ForEach-Object {
+        Write-Host $_.FullName
+        Get-Content -LiteralPath $_.FullName -Tail 35
+    }
     if ($helper -and -not $helper.HasExited) { Stop-Process -Id $helper.Id -Force }
     Get-Process | Where-Object { $_.Path -eq (Join-Path $target 'conxml.exe') } | Stop-Process -Force
 }
