@@ -63,6 +63,7 @@ foreach ($p in @($root, $child)) {
     $p | Add-Member ScriptMethod WaitForExit { param($ms) return $this.HasExited }
 }
 function Start-Sleep { param($Milliseconds) }
+function Get-FileHash { throw "Esta prueba no ofrece Get-FileHash" }
 function Get-InstalledVersion { param($cliExe) if ($scenario -eq 'version_mismatch') { return 'conxml 0.0.1' }; return "conxml $ExpectedVersion" }
 function Get-CimInstance {
     param($ClassName, $ErrorAction)
