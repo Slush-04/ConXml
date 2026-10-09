@@ -20,6 +20,8 @@ icono_principal = ICONO_ICNS if (sys.platform == "darwin" and os.path.exists(ICO
 datas_gui = [
     (ICONO_ICO, "assets"),
     (ICONO_PNG, "assets"),
+    ("src/conxml/ui/assets/introduccion.mp4", "assets"),
+    ("src/conxml/ui/native/Introduccion.ps1", "assets"),
 ]
 if os.path.exists(ICONO_ICNS):
     datas_gui.append((ICONO_ICNS, "assets"))
@@ -38,6 +40,10 @@ if sys.platform == "darwin":
     subprocess.run(["xcrun", "swiftc", "-O", "-module-cache-path", "build/native/swift-cache",
                     "src/conxml/ui/native/VisorPDF.swift", "-o", visor_nativo], check=True)
     binaries_gui.append((visor_nativo, "assets"))
+    intro_nativa = "build/native/conxml-intro-player"
+    subprocess.run(["xcrun", "swiftc", "-O", "-module-cache-path", "build/native/swift-cache",
+                    "src/conxml/ui/native/Introduccion.swift", "-o", intro_nativa], check=True)
+    binaries_gui.append((intro_nativa, "assets"))
 
 a_gui = Analysis(
     ["src/conxml/ui_main.py"],

@@ -1,0 +1,16 @@
+{
+  "duration": 4,
+  "assertions": [
+    {
+      "kind": "appearsBy",
+      "selector": "#cliente-headline",
+      "bySec": 0.8
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": "#cliente-visual",
+      "fromSec": 0.8,
+      "toSec": 3.8
+    }
+  ]
+}

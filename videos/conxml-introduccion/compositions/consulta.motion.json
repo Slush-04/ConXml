@@ -1,0 +1,16 @@
+{
+  "duration": 4.5,
+  "assertions": [
+    {
+      "kind": "appearsBy",
+      "selector": "#consulta-headline",
+      "bySec": 0.8
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": "#consulta-visual",
+      "fromSec": 0.8,
+      "toSec": 4.3
+    }
+  ]
+}

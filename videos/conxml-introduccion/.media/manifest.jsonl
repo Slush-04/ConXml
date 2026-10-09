@@ -1,0 +1,3 @@
+{"id":"image_001","type":"image","path":"assets/logo_conxml.png","source":"existing","description":"logo conxml","width":512,"height":512,"provenance":{"provider":"local","adopted":true}}
+{"id":"bgm_001","type":"bgm","path":"assets/audio/conxml-bienvenida-escucha.mp3","source":"existing","description":"conxml bienvenida escucha","duration":18,"provenance":{"provider":"local","adopted":true}}
+{"id":"bgm_002","type":"bgm","path":"assets/audio/conxml-bienvenida.wav","source":"existing","description":"conxml bienvenida","duration":18,"provenance":{"provider":"local","adopted":true}}

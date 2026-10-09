@@ -34,6 +34,7 @@ from conxml.ui.pantalla_descargas import PantallaDescargas
 from conxml.ui.pantalla_resumen import PantallaResumen
 from conxml.ui.iconos import icono
 from conxml.ui.actualizaciones import Actualizaciones
+from conxml.ui.introduccion import primera_apertura, mostrar_introduccion
 
 SECCIONES = [
     ("admin_xml", "COMPROBANTES", [
@@ -45,6 +46,7 @@ SECCIONES = [
     ("sistema", "SISTEMA", [
         ("clientes", "Cambiar cliente"),
         ("ajustes", "Configuración"),
+        ("ayuda", "Ayuda"),
     ]),
 ]
 
@@ -60,6 +62,7 @@ TEXTO_NAV_COMPLETO = {
     "ajustes": "Configuración",
     "clientes": "Cambiar cliente",
     "boveda": "Bóveda de XML",
+    "ayuda": "Ayuda",
 }
 TEXTO_NAV_BREVE = {
     "descargas": "Descargas",
@@ -70,6 +73,7 @@ TEXTO_NAV_BREVE = {
     "ajustes": "Ajustes",
     "clientes": "Cliente",
     "boveda": "Bóveda",
+    "ayuda": "Ayuda",
 }
 TITULO_GRUPO_COMPLETO = {
     "admin_xml": "COMPROBANTES",
@@ -272,7 +276,12 @@ class ConXmlApp(ctk.CTkFrame):
                 )
                 indicator.grid(row=fila, column=0, sticky="ns", padx=(4, 0), pady=1)
 
-                comando = self.cambiar_cliente if clave == "clientes" else lambda c=clave: self.navegar(c)
+                if clave == "clientes":
+                    comando = self.cambiar_cliente
+                elif clave == "ayuda":
+                    comando = self.mostrar_ayuda
+                else:
+                    comando = lambda c=clave: self.navegar(c)
                 sub = self._crear_boton_nav(self._nav, texto, comando)
                 sub.grid(row=fila, column=1, sticky="ew", padx=(0, 6), pady=1)
 
@@ -363,6 +372,31 @@ class ConXmlApp(ctk.CTkFrame):
             pass
         self.after(250, self._aplicar_responsive_inicial)
         self.actualizaciones = Actualizaciones(self)
+
+    def mostrar_ayuda(self) -> None:
+        ventana = ctk.CTkToplevel(self.master)
+        ventana.title("ConXml — Ayuda")
+        ventana.geometry("510x260")
+        ventana.resizable(False, False)
+        ventana.configure(fg_color=th.FONDO)
+        ventana.transient(self.master)
+        ctk.CTkLabel(ventana, text="Empieza con ConXml", text_color=th.TEXTO,
+                     font=(th.FUENTE, 24, "bold")).pack(padx=28, pady=(30, 16), anchor="w")
+        ctk.CTkLabel(ventana, text="Elige un cliente, carga tus XML y consulta o exporta.",
+                     text_color=th.TEXTO_SECUNDARIO, wraplength=445, justify="left",
+                     font=(th.FUENTE, th.TAM_BODY)).pack(padx=28, anchor="w")
+
+        def ver_intro():
+            ventana.destroy()
+            if not mostrar_introduccion(self.master):
+                messagebox.showinfo("Introducción de ConXml",
+                                    "No se pudo abrir el reproductor local de la introducción.",
+                                    parent=self.master)
+
+        ctk.CTkButton(ventana, text="Ver introducción", command=ver_intro,
+                      fg_color=th.PRIMARIO, hover_color=th.PRIMARIO_HOVER,
+                      font=(th.FUENTE, th.TAM_BODY), height=38).pack(padx=28, pady=24, anchor="w")
+        ventana.after(100, ventana.lift)
 
     def _crear_boton_nav(self, parent, texto: str, comando) -> ctk.CTkButton:
         boton = ctk.CTkButton(
@@ -848,25 +882,28 @@ def main() -> None:
             logger.info("Construyendo interfaz principal")
             raiz._conxml_app = ConXmlApp(raiz, cliente_actual=clave)
 
-        logger.info("Consultando cliente de inicio")
-        cliente = estado_local.cargar().get('sesion', {}).get('cliente')
-        with Catalogo(Config().db_path) as catalogo:
-            existe = bool(cliente and catalogo.obtener_cliente(cliente))
-        if existe:
-            logger.info("Cliente guardado encontrado; abriendo interfaz principal")
-            abrir_programa(cliente)
-        else:
-            logger.info("Sin cliente de inicio; mostrando selector en ventana principal")
-            raiz.title("ConXml — Seleccionar cliente")
-            raiz.geometry("900x650")
-            raiz.minsize(760, 520)
-            raiz.protocol("WM_DELETE_WINDOW", raiz.destroy)
-            selector = PantallaClientes(
-                raiz, app=None, on_selected=abrir_programa, db_path=Config().db_path
-            )
-            selector.pack(fill="both", expand=True)
-            selector.al_mostrar()
-            raiz._selector_inicial = selector
+        def continuar_inicio() -> None:
+            logger.info("Consultando cliente de inicio")
+            cliente = estado_local.cargar().get('sesion', {}).get('cliente')
+            with Catalogo(Config().db_path) as catalogo:
+                existe = bool(cliente and catalogo.obtener_cliente(cliente))
+            if existe:
+                logger.info("Cliente guardado encontrado; abriendo interfaz principal")
+                abrir_programa(cliente)
+            else:
+                logger.info("Sin cliente de inicio; mostrando selector en ventana principal")
+                raiz.title("ConXml — Seleccionar cliente")
+                raiz.geometry("900x650")
+                raiz.minsize(760, 520)
+                raiz.protocol("WM_DELETE_WINDOW", raiz.destroy)
+                selector = PantallaClientes(
+                    raiz, app=None, on_selected=abrir_programa, db_path=Config().db_path
+                )
+                selector.pack(fill="both", expand=True)
+                selector.al_mostrar()
+                raiz._selector_inicial = selector
+
+        primera_apertura(raiz, continuar_inicio)
         logger.info("Iniciando ciclo de eventos de Tk")
         raiz.mainloop()
     except Exception as exc:

@@ -1,0 +1,15 @@
+<!DOCTYPE html><html lang="es-MX"><head><meta charset="UTF-8"></head><body><template>
+<style>#cliente-root{position:absolute;inset:0;width:100%;height:100%}</style>
+<div data-hf-id="hf-2yee" id="cliente-root" data-composition-id="cliente" data-width="1920" data-height="1080" data-duration="4">
+<div data-hf-id="hf-mk18" id="cliente-content" class="scene-content"><div data-hf-id="hf-bdx3" class="copy"><p data-hf-id="hf-6mv5" id="cliente-eyebrow" class="eyebrow">01 / ELIGE TU CLIENTE</p><h1 data-hf-id="hf-8ky5" id="cliente-headline" class="headline hf-catalog-line-by-line-slide"><span data-hf-id="hf-4hn4">Cada cliente,</span><span data-hf-id="hf-qzw7" class="accent">su espacio.</span></h1><p data-hf-id="hf-g030" id="cliente-desc" class="desc">Selecciona o crea un cliente para comenzar.</p></div><div data-hf-id="hf-odb2" id="cliente-visual"><div data-hf-id="hf-owjm" class="panel"><p data-hf-id="hf-sd1z" class="panel-title">Selecciona un cliente</p><div data-hf-id="hf-w0ea" id="cliente-active" class="client-row selected"><div data-hf-id="hf-uocn" class="avatar">CE</div><div data-hf-id="hf-7sux" class="client-copy"><span data-hf-id="hf-ast9" class="row-title">Cliente de ejemplo</span><span data-hf-id="hf-kuhk" class="row-meta">Tu espacio de trabajo</span></div><svg data-hf-id="hf-9alz" id="cliente-check" class="tick" viewBox="0 0 36 36" aria-hidden="true"><path data-hf-id="hf-n4o3" d="M6 18 L14 26 L30 9" /></svg></div><div data-hf-id="hf-hukz" id="cliente-new" class="client-row"><div data-hf-id="hf-o8wc" class="avatar light">+</div><div data-hf-id="hf-on8t" class="client-copy"><span data-hf-id="hf-jm5v" class="row-title">Nuevo cliente</span><span data-hf-id="hf-g9bc" class="row-meta">Nombre y RFC</span></div></div><div data-hf-id="hf-dpvb" class="tag-row"><span data-hf-id="hf-5c8x" class="tag"><i data-hf-id="hf-1qjn" class="mini-dot"></i>Archivos por cliente</span></div></div></div></div></div>
+<script>(()=>{const tl=gsap.timeline({paused:true});
+// Adapted from the installed line-by-line-slide registry component.
+tl.fromTo('#cliente-headline span',{opacity:0,'--hf-line-x':'-36px','--hf-line-y':'18px'},{opacity:1,'--hf-line-x':'0px','--hf-line-y':'0px',duration:.45,stagger:.09,ease:'power3.out'},.04);
+tl.fromTo('#cliente-eyebrow',{opacity:0,y:-12},{opacity:1,y:0,duration:.35,ease:'power2.out'},.02);
+tl.fromTo('#cliente-desc',{opacity:0,y:15},{opacity:1,y:0,duration:.4,ease:'power1.out'},.22);
+tl.fromTo('#cliente-visual',{opacity:0,scale:.94,x:24},{opacity:1,scale:1,x:0,duration:.55,ease:'power3.out'},.1);
+tl.fromTo('#cliente-active',{x:24,opacity:0},{x:0,opacity:1,duration:.45,ease:'power3.out'},.45);tl.fromTo('#cliente-new',{x:24,opacity:0},{x:0,opacity:1,duration:.45,ease:'power2.out'},.58);
+const path=document.querySelector('#cliente-check path');const len=path.getTotalLength();path.style.strokeDasharray=String(len);tl.fromTo(path,{strokeDashoffset:len},{strokeDashoffset:0,duration:.38,ease:'power2.out'},1.1);
+tl.to('#cliente-content',{opacity:0,y:-10,duration:.15,ease:'power1.in'},3.85);
+window.__timelines['cliente']=tl;})();</script>
+</template></body></html>

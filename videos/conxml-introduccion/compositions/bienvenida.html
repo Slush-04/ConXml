@@ -1,0 +1,14 @@
+<!DOCTYPE html><html lang="es-MX"><head><meta charset="UTF-8"></head><body><template>
+<style>#bienvenida-root{position:absolute;inset:0;width:100%;height:100%}</style>
+<div data-hf-id="hf-218j" id="bienvenida-root" data-composition-id="bienvenida" data-width="1920" data-height="1080" data-duration="3">
+<div data-hf-id="hf-ohw9" id="bienvenida-content" class="scene-content"><div data-hf-id="hf-bdx3" class="copy"><p data-hf-id="hf-n3ok" id="bienvenida-eyebrow" class="eyebrow">BIENVENIDO A CONXML</p><h1 data-hf-id="hf-5gvq" id="bienvenida-headline" class="headline hf-catalog-line-by-line-slide"><span data-hf-id="hf-g1k8">Tus XML.</span><span data-hf-id="hf-b3f0" class="accent">Todo en orden.</span></h1><p data-hf-id="hf-avz4" id="bienvenida-desc" class="desc">Un inicio sencillo para tu trabajo contable.</p></div><div data-hf-id="hf-2up7" id="bienvenida-visual"><div data-hf-id="hf-wzxx" class="hero-panel"><img data-hf-id="hf-8ecd" id="bienvenida-logo" class="hero-logo" src="assets/logo_conxml.png" alt="Logo de ConXml"><div data-hf-id="hf-pz2c" class="hero-word">ConXml</div><div data-hf-id="hf-uzwp" id="bienvenida-rule" class="hero-underline"></div></div></div></div></div>
+<script>(()=>{const tl=gsap.timeline({paused:true});
+// Adapted from the installed line-by-line-slide registry component.
+tl.fromTo('#bienvenida-headline span',{opacity:0,'--hf-line-x':'-36px','--hf-line-y':'18px'},{opacity:1,'--hf-line-x':'0px','--hf-line-y':'0px',duration:.45,stagger:.09,ease:'power3.out'},.04);
+tl.fromTo('#bienvenida-eyebrow',{opacity:0,y:-12},{opacity:1,y:0,duration:.35,ease:'power2.out'},.02);
+tl.fromTo('#bienvenida-desc',{opacity:0,y:15},{opacity:1,y:0,duration:.4,ease:'power1.out'},.22);
+tl.fromTo('#bienvenida-visual',{opacity:0,scale:.94,x:24},{opacity:1,scale:1,x:0,duration:.55,ease:'power3.out'},.1);
+tl.fromTo('#bienvenida-logo',{scale:.85,opacity:0},{scale:1,opacity:1,duration:.6,ease:'power3.out'},.15);tl.fromTo('#bienvenida-rule',{scaleX:0},{scaleX:1,duration:.55,ease:'power2.out'},.5);
+tl.to('#bienvenida-content',{opacity:0,y:-10,duration:.15,ease:'power1.in'},2.85);
+window.__timelines['bienvenida']=tl;})();</script>
+</template></body></html>

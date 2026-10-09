@@ -1,0 +1,14 @@
+<!DOCTYPE html><html lang="es-MX"><head><meta charset="UTF-8"></head><body><template>
+<style>#cierre-root{position:absolute;inset:0;width:100%;height:100%}</style>
+<div data-hf-id="hf-3b27" id="cierre-root" data-composition-id="cierre" data-width="1920" data-height="1080" data-duration="2.5">
+<div data-hf-id="hf-ueuk" id="cierre-content" class="scene-content"><div data-hf-id="hf-bdx3" class="copy"><p data-hf-id="hf-8jf0" id="cierre-eyebrow" class="eyebrow">YA PUEDES EMPEZAR</p><h1 data-hf-id="hf-rn7x" id="cierre-headline" class="headline hf-catalog-line-by-line-slide"><span data-hf-id="hf-bk0m">Bienvenido</span><span data-hf-id="hf-2ykr" class="accent">a ConXml.</span></h1><p data-hf-id="hf-ta8b" id="cierre-desc" class="desc">Tu siguiente paso: elige tu primer cliente.</p></div><div data-hf-id="hf-2suk" id="cierre-visual"><div data-hf-id="hf-tx5n" class="panel close-panel"><img data-hf-id="hf-z74u" id="cierre-logo" class="hero-logo close-logo" src="assets/logo_conxml.png" alt="Logo de ConXml"><div data-hf-id="hf-kksv" id="cierre-ready" class="ready"><svg data-hf-id="hf-2oi5" id="cierre-check" class="tick" viewBox="0 0 36 36" aria-hidden="true"><path data-hf-id="hf-n4o3" d="M6 18 L14 26 L30 9" /></svg><span data-hf-id="hf-ubtx">Todo listo para comenzar</span></div></div></div></div></div>
+<script>(()=>{const tl=gsap.timeline({paused:true});
+// Adapted from the installed line-by-line-slide registry component.
+tl.fromTo('#cierre-headline span',{opacity:0,'--hf-line-x':'-36px','--hf-line-y':'18px'},{opacity:1,'--hf-line-x':'0px','--hf-line-y':'0px',duration:.45,stagger:.09,ease:'power3.out'},.04);
+tl.fromTo('#cierre-eyebrow',{opacity:0,y:-12},{opacity:1,y:0,duration:.35,ease:'power2.out'},.02);
+tl.fromTo('#cierre-desc',{opacity:0,y:15},{opacity:1,y:0,duration:.4,ease:'power1.out'},.22);
+tl.fromTo('#cierre-visual',{opacity:0,scale:.94,x:24},{opacity:1,scale:1,x:0,duration:.55,ease:'power3.out'},.1);
+tl.fromTo('#cierre-logo',{scale:.9},{scale:1,duration:.7,ease:'power3.out'},.15);tl.fromTo('#cierre-ready',{y:12,opacity:0},{y:0,opacity:1,duration:.4,ease:'power2.out'},.55);
+const path=document.querySelector('#cierre-check path');const len=path.getTotalLength();path.style.strokeDasharray=String(len);tl.fromTo(path,{strokeDashoffset:len},{strokeDashoffset:0,duration:.38,ease:'power2.out'},0.6);
+window.__timelines['cierre']=tl;})();</script>
+</template></body></html>
