@@ -48,6 +48,7 @@ def run_gui(entrypoint) -> None:
     """Ejecuta la GUI y muestra/loguea excepciones no controladas."""
     try:
         entrypoint()
+    # SystemExit (incluido el cierre para actualizar) debe propagarse sin diálogo.
     except Exception as exc:
         path = write_startup_error(exc)
         try:

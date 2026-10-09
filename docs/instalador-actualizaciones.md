@@ -54,12 +54,33 @@ commits ni artefactos incompletos. Sin red conserva la sesión y permite reinten
 Al pulsar se pide descargar. La descarga va a `ConXml\updates`, fuera de los
 respaldos, se escribe temporalmente y se valida tamaño y SHA-256 antes de renombrar.
 Los errores borran el temporal. La instalación requiere otra acción del usuario:
-guarda sesión, crea respaldo incluso si el respaldo al cerrar está desactivado,
-vuelve a comprobar el instalador, abre el asistente interactivo y cierra ConXml.
-El mutex compartido con Setup bloquea la sustitución mientras otra GUI está abierta;
-Setup no fuerza el cierre. Al terminar puedes abrir la nueva app. Cancelar el
-asistente conserva la versión anterior; vuelve a abrirla con su acceso directo.
-No hay instalación silenciosa ni actualización automática de esquemas de datos.
+guarda sesión y crea un respaldo de datos antes de preparar la actualización.
+Para el paquete ZIP, genera `actualizar.ps1`, espera su confirmación de arranque
+y cierra ConXml. El helper respalda los ejecutables, los reemplaza, inicia la nueva
+instancia y busca su ventana tanto en el proceso lanzado como en sus descendientes
+con la misma ruta de ejecutable (PyInstaller onefile).
+
+El relanzamiento usa `PYINSTALLER_RESET_ENVIRONMENT=1` para no reutilizar los
+recursos temporales de la instancia anterior, conforme a la
+[documentación de PyInstaller](https://pyinstaller.org/en/stable/common-issues-and-pitfalls.html#using-sys-executable-to-spawn-subprocesses-that-outlive-the-application-process).
+Los respaldos de binarios quedan en `updates/backup/attempt-*`, separados por intento.
+Si falla la copia o el arranque, el helper detiene los procesos que lanzó, espera
+su salida y restaura con reintentos y comprobación SHA-256. Sólo relanza después
+de restaurar todos los archivos afectados; si falla, conserva el respaldo y lo
+informa sin afirmar que se recuperó la versión anterior.
+
+Los registros están en la carpeta de logs de ConXml: `actualizacion.log` guarda
+las etapas y `actualizacion-launcher.log` captura también los errores tempranos de
+PowerShell. Si no puede crear la ventana de progreso, continúa escribiendo el log.
+Si el helper no confirma su arranque en 15 segundos, la aplicación permanece abierta.
+`SystemExit(0)` y `SystemExit(None)` se propagan sin diálogo de fallo de arranque.
+
+El Setup interactivo sigue disponible para instalación inicial y recuperación.
+Para equipos con el helper defectuoso, instalar una vez un Setup compilado con
+esta corrección: el ZIP nuevo no cambia el código que la versión antigua usa para
+generar el helper de esa misma actualización. No reutilizar el `actualizar.ps1`
+generado por la versión defectuosa. Instalar sobre la misma carpeta, con ConXml
+cerrado, conserva el directorio de datos; no hace falta desinstalar.
 
 La API y todas las redirecciones usan HTTPS y orígenes GitHub permitidos; el
 instalador debe pertenecer a la versión y repositorio fijados. SHA-256 verifica
@@ -167,3 +188,14 @@ esas cinco comprobaciones deben correrse en una laptop Windows con pantalla real
 - `tests/test_ui_responsive.py`: expectativa de filtros de Bóveda actualizada a su
   comportamiento existente; verifica que la carpeta externa se lee completa.
 - `README.md` y esta guía: entrega, activación, pruebas y límites.
+
+## Regresión del actualizador (8 de octubre de 2026)
+
+Ejecutar `python -m pytest tests/test_updates.py tests/test_startup.py tests/test_updater_recovery.py -q`.
+La prueba del helper requiere `powershell.exe` o `pwsh` en PATH. Ejecuta PowerShell
+con archivos reales y procesos simulados, comprueba también la sintaxis del script
+completo y cubre ventana en el hijo, salida del lanzador, fallo de arranque, bloqueo
+temporal/permanente, fallo de respaldo/copia y confirmación de arranque del helper.
+Resultado local: 45 pruebas aprobadas usando PowerShell 7.4.6 en macOS. Esto no
+sustituye una prueba con PowerShell 5.1 y el ejecutable PyInstaller real en Windows.
+La corrección de código no compila ni publica una Release por sí sola.

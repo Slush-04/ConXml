@@ -72,7 +72,7 @@ def test_generated_powershell_script_uses_utf8_bom(tmp_path):
     assert 'Actualización completada exitosamente.' in texto
     parametros = texto.split('$ErrorActionPreference', 1)[0]
     lineas_parametros = [linea.strip() for linea in parametros.splitlines()[2:-1]]
-    assert len(lineas_parametros) == 6
+    assert len(lineas_parametros) == 7
     assert all(linea.endswith(',') for linea in lineas_parametros[:-1])
     assert not lineas_parametros[-1].endswith(',')
     assert 'ExpectedVersion' in texto
@@ -352,64 +352,6 @@ def test_apply_update_corrupt_or_missing_exe_aborts(tmp_path):
     with pytest.raises(UpdateError, match='archivo no permitido'):
         updater.apply_update(release, zip_file)
 
-
-def test_powershell_helper_execution_and_rollback(tmp_path):
-    """Ejecuta el script PowerShell generado simulando un proceso completado y verifica el reemplazo y rollback."""
-    import subprocess
-    import shutil
-    from conxml.updates import generar_script_actualizador
-
-    if sys.platform != 'win32' or not shutil.which('powershell.exe'):
-        pytest.skip('Requiere PowerShell en Windows')
-
-    target_dir = tmp_path / 'app'
-    target_dir.mkdir()
-    (target_dir / 'conxml.exe').write_bytes(b'version 1')
-
-    staging_dir = tmp_path / 'staging'
-    staging_dir.mkdir()
-    (staging_dir / 'conxml.exe').write_bytes(b'version 2')
-
-    backup_dir = tmp_path / 'backup'
-    log_file = tmp_path / 'logs' / 'update.log'
-    script_path = tmp_path / 'test_update.ps1'
-
-    generar_script_actualizador(
-        script_path,
-        parent_pid=0,  # 0 indica no esperar proceso padre
-        target_dir=target_dir,
-        staging_dir=staging_dir,
-        backup_dir=backup_dir,
-        log_file=log_file,
-    )
-
-    # 1. Ejecutar helper en modo normal (sin relanzar proceso GUI inexistente para evitar popup de ejecutable no válido)
-    # Reemplazamos la sección de Start-Process con un log para la prueba de script
-    # Quitar el BOM al leer antes de guardar el script de prueba con un único BOM.
-    script_content = script_path.read_text(encoding='utf-8-sig')
-    script_test = script_content.replace(
-        '$nuevoProc = Start-Process -FilePath $nuevoExe -PassThru',
-        '$nuevoProc = [pscustomobject]@{ Id = 123; HasExited = $false; MainWindowHandle = [IntPtr]1 }\n'
-        '$nuevoProc | Add-Member -MemberType ScriptMethod -Name Refresh -Value {}',
-    )
-    script_test = script_test.replace(
-        '[System.Windows.Forms.MessageBox]::Show("ConXml se actualizó a la versión $ExpectedVersion y se abrió correctamente.", "Actualización completada", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null',
-        'Write-Log "Prueba completada; diálogo de éxito omitido."',
-    )
-    script_test_path = tmp_path / 'run_test.ps1'
-    # PowerShell 5.1 requiere BOM para reconocer UTF-8; sin él los acentos
-    # del script se leen como ANSI y la comprobación del log falla.
-    script_test_path.write_text(script_test, encoding='utf-8-sig')
-
-    res = subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script_test_path)],
-                         capture_output=True, text=True, timeout=15)
-    assert res.returncode == 0, res.stdout + res.stderr
-
-    # Comprobar reemplazo exitoso y respaldo
-    assert (target_dir / 'conxml.exe').read_bytes() == b'version 2'
-    assert (backup_dir / 'conxml.exe').read_bytes() == b'version 1'
-    assert log_file.is_file()
-    assert 'Actualización completada exitosamente' in log_file.read_text(encoding='utf-8')
 
 
 def test_data_preservation_during_direct_update(tmp_path, monkeypatch):
