@@ -7,6 +7,7 @@ AppName=ConXml
 AppVersion={#AppVersion}
 AppPublisher=ConXml
 DefaultDirName={localappdata}\Programs\ConXml
+UsePreviousAppDir=yes
 DefaultGroupName=ConXml
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible

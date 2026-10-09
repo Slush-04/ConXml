@@ -36,6 +36,16 @@ jobs:
       - name: Compilar y probar
         shell: pwsh
         run: ./scripts/build_installer.ps1
+      - name: Probar instalación y actualización reales
+        shell: pwsh
+        run: ./scripts/test_installed_update.ps1
+      - name: Guardar diagnóstico de actualización
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ConXml-update-diagnostics
+          path: dist/update-smoke/**/*.log
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: ConXml-Windows-dist

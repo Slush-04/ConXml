@@ -51,6 +51,25 @@ class Release:
     kind: str = "zip"  # "zip" para reemplazo directo o "installer" para setup interactivo
 
 
+# Esperar también al bootloader onefile y al CLI; el PID de la GUI no basta.
+WAIT_INSTALLED_PROCESSES = r"""
+function Wait-InstalledProcesses {
+    $executables = @((Join-Path $TargetDir "conxml.exe"), (Join-Path $TargetDir "conxml-cli.exe"))
+    $deadline = (Get-Date).AddSeconds(60)
+    do {
+        $active = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
+            $_.ExecutablePath -and $executables -contains $_.ExecutablePath
+        })
+        if ($active.Count -eq 0) { return }
+        if ((Get-Date) -ge $deadline) {
+            throw "ConXml sigue en uso (PID $($active.ProcessId -join ', ')). Cierra sus otras instancias y reintenta."
+        }
+        Start-Sleep -Milliseconds 500
+    } while ($true)
+}
+"""
+
+
 def generar_script_actualizador(
     script_path: Path,
     *,
@@ -61,6 +80,7 @@ def generar_script_actualizador(
     log_file: Path,
     expected_version: str = "",
     ready_file: Path | None = None,
+    show_completion: bool = True,
 ) -> Path:
     """Genera el script PowerShell que reemplaza los binarios tras el cierre de ConXml."""
     contenido = f"""# Script de actualización desatendida para ConXml
@@ -270,7 +290,13 @@ if ($ParentPid -gt 0) {{
     }}
 }}
 
-Start-Sleep -Milliseconds 600
+{WAIT_INSTALLED_PROCESSES}
+try {{
+    Wait-InstalledProcesses
+}} catch {{
+    Show-UpdateFailure "No se pueden sustituir los ejecutables: $($_.Exception.Message)"
+    exit 1
+}}
 
 # 2. Respaldar todo antes de reemplazar; nunca restaurar un respaldo de otra corrida.
 Set-UpdateStatus "Guardando respaldo de la versión anterior..." 15
@@ -356,10 +382,11 @@ try {{
 
 Set-UpdateStatus "ConXml $ExpectedVersion se abrió correctamente. Actualización completada." 100
 Write-Log "Actualización completada exitosamente."
-if ($null -ne $form) {{
+if ($null -ne $form -and ${str(show_completion).lower()}) {{
 [System.Windows.Forms.MessageBox]::Show("ConXml se actualizó a la versión $ExpectedVersion y se abrió correctamente.", "Actualización completada", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
 $form.Close()
 }}
+if ($null -ne $form) {{ $form.Close() }}
 """
     script_path.parent.mkdir(parents=True, exist_ok=True)
     # Windows PowerShell 5.1 interpreta archivos UTF-8 sin BOM como ANSI.
@@ -381,6 +408,8 @@ def _extraer_paquete_seguro(archivo: zipfile.ZipFile, destino: Path) -> None:
             continue
         if ruta.is_absolute() or len(ruta.parts) != 1 or ruta.name not in permitidos:
             raise UpdateError("El paquete contiene una ruta o archivo no permitido.")
+        if ruta.name in encontrados:
+            raise UpdateError("El paquete contiene un ejecutable duplicado.")
         # El bit de enlace simbólico en ZIP no debe poder escapar del staging.
         if (info.external_attr >> 16) & 0o170000 == 0o120000:
             raise UpdateError("El paquete no puede contener enlaces simbólicos.")
@@ -396,8 +425,8 @@ def _extraer_paquete_seguro(archivo: zipfile.ZipFile, destino: Path) -> None:
             shutil.copyfileobj(origen, salida, length=1024 * 1024)
         encontrados.add(ruta.name)
 
-    if "conxml.exe" not in encontrados:
-        raise UpdateError("El paquete descargado no contiene conxml.exe.")
+    if encontrados != permitidos:
+        raise UpdateError("El paquete debe contener conxml.exe y conxml-cli.exe.")
 
 
 class Updater:
@@ -588,44 +617,61 @@ class Updater:
         )
 
         if sys.platform == "win32" and not self.demo and getattr(sys, "frozen", False):
-            cmd = [
-                "powershell.exe",
-                "-NoProfile",
-                "-NonInteractive",
-                "-STA",
-                "-ExecutionPolicy", "Bypass",
-                "-WindowStyle", "Hidden",
-                "-File", str(script_path),
-            ]
-            flags = 0
-            if hasattr(subprocess, "DETACHED_PROCESS"):
-                flags |= subprocess.DETACHED_PROCESS
-            if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
-                flags |= subprocess.CREATE_NEW_PROCESS_GROUP
-            # Persistir también errores de parser/arranque, anteriores a Write-Log.
-            log_file.parent.mkdir(parents=True, exist_ok=True)
-            launch_log = log_file.with_name("actualizacion-launcher.log")
-            with launch_log.open("ab", buffering=0) as output:
-                output.write(f"\nLanzando actualización {release.version}: {script_path}\n".encode("utf-8"))
+            self._start_helper(script_path, ready_file, log_file, release.version)
+
+        return script_path
+
+    def _start_helper(self, script_path: Path, ready_file: Path, log_file: Path, version: str):
+        cmd = [
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-STA",
+            "-ExecutionPolicy", "Bypass",
+            "-WindowStyle", "Hidden",
+            "-File", str(script_path),
+        ]
+        flags = 0
+        if hasattr(subprocess, "DETACHED_PROCESS"):
+            flags |= subprocess.DETACHED_PROCESS
+        if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+            flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+        # Persistir también errores de parser/arranque, anteriores a Write-Log.
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        launch_log = log_file.with_name("actualizacion-launcher.log")
+        with launch_log.open("ab", buffering=0) as output:
+            output.write(f"\nLanzando actualización {version}: {script_path}\n".encode("utf-8"))
+            # PyInstaller cambia la búsqueda de DLL también para procesos externos.
+            # PowerShell debe arrancar con las DLL del sistema, no las de _MEIPASS.
+            kernel = None
+            if os.name == "nt" and getattr(sys, "frozen", False):
+                import ctypes
+                kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+                kernel.SetDllDirectoryW.argtypes = [ctypes.c_wchar_p]
+                kernel.SetDllDirectoryW.restype = ctypes.c_int
+                if not kernel.SetDllDirectoryW(None):
+                    raise UpdateError("No se pudo preparar el entorno del actualizador.")
+            try:
                 helper = subprocess.Popen(
                     cmd, creationflags=flags, close_fds=True,
                     stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
                     cwd=str(self.cache),
                     env={**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"},
                 )
-            deadline = time.monotonic() + 15
-            while not ready_file.is_file():
-                if helper.poll() is not None:
-                    raise UpdateError(f"El actualizador terminó antes de iniciar. Revisa {launch_log}")
-                if time.monotonic() >= deadline:
-                    helper.terminate()
-                    helper.wait(timeout=5)
-                    raise UpdateError(f"El actualizador no confirmó su arranque. Revisa {launch_log}")
-                time.sleep(0.1)
+            finally:
+                if kernel is not None:
+                    kernel.SetDllDirectoryW(getattr(sys, "_MEIPASS", None))
+        deadline = time.monotonic() + 15
+        while not ready_file.is_file():
             if helper.poll() is not None:
-                raise UpdateError(f"El actualizador terminó después de confirmar su arranque. Revisa {launch_log}")
-
-        return script_path
+                raise UpdateError(f"El actualizador terminó antes de iniciar. Revisa {launch_log}")
+            if time.monotonic() >= deadline:
+                helper.terminate()
+                helper.wait(timeout=5)
+                raise UpdateError(f"El actualizador no confirmó su arranque. Revisa {launch_log}")
+            time.sleep(0.1)
+        if helper.poll() is not None:
+            raise UpdateError(f"El actualizador terminó después de confirmar su arranque. Revisa {launch_log}")
 
     def launch(self, release: Release, path: Path):
         """Lanza el instalador interactivo como método alternativo o de rescate."""
@@ -639,27 +685,34 @@ class Updater:
                 h.update(block)
         if path.stat().st_size != release.size or h.hexdigest() != release.sha256:
             raise UpdateError("El instalador cambió después de descargarlo.")
-        # AppMutex impide sustituir la aplicación mientras este proceso sigue
-        # vivo. Un proceso auxiliar espera a que ConXml termine y solo después
-        # abre Setup; así el Run de Inno Setup no intenta lanzar la nueva app
-        # mientras el mutex de la versión anterior aún existe.
-        helper = self.cache / f".instalar-despues-{os.getpid()}.ps1"
-        installer = str(path).replace("'", "''")
+        self.cache.mkdir(parents=True, exist_ok=True)
+        attempt = Path(tempfile.mkdtemp(prefix="setup-", dir=self.cache))
+        helper = attempt / "instalar.ps1"
+        ready_file = attempt / "helper.ready"
+        log_file = Config().logs_dir / "actualizacion-setup.log"
+        target = Path(sys.executable).resolve().parent
+        quote = lambda value: str(value).replace("'", "''")
         helper.write_text(
-            "$ErrorActionPreference = 'SilentlyContinue'\n"
-            f"$installer = '{installer}'\n"
-            f"try {{ Wait-Process -Id {os.getpid()} -ErrorAction Stop }} catch {{ }}\n"
-            "Start-Process -FilePath $installer -Wait\n"
-            "Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue\n"
-            "Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue\n",
-            encoding="utf-8",
+            "$ErrorActionPreference = 'Stop'\n"
+            f"$installer = '{quote(path)}'\n"
+            f"$TargetDir = '{quote(target)}'\n"
+            f"$LogFile = '{quote(log_file)}'\n"
+            "$env:PYINSTALLER_RESET_ENVIRONMENT = '1'\n"
+            "try {\n"
+            f"    Set-Content -LiteralPath '{quote(ready_file)}' -Value 'ready' -Encoding ascii\n"
+            f"    Wait-Process -Id {os.getpid()} -Timeout 60 -ErrorAction SilentlyContinue\n"
+            + WAIT_INSTALLED_PROCESSES + "\n"
+            "    Wait-InstalledProcesses\n"
+            # Fijar destino para evitar actualizar otra instalación del registro.
+            '    $arguments = @("/DIR=`"$TargetDir`"", "/LOG=`"$LogFile`"")\n'
+            "    $setup = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru\n"
+            "    if ($setup.ExitCode -ne 0) { throw \"Setup terminó con código $($setup.ExitCode). Instalador conservado: $installer\" }\n"
+            "} catch {\n"
+            "    $failure = $_.Exception.Message\n"
+            "    Write-Output $failure\n"
+            "    try { Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show(\"$failure`nRegistro: $LogFile\", 'No se pudo actualizar ConXml') | Out-Null } catch {}\n"
+            "    exit 1\n"
+            "}\n",
+            encoding="utf-8-sig",
         )
-        detached = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
-        no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-        subprocess.Popen(
-            ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
-             "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
-             "-File", str(helper)],
-            close_fds=True,
-            creationflags=detached | no_window,
-        )
+        self._start_helper(helper, ready_file, log_file, release.version)

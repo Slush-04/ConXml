@@ -218,13 +218,19 @@ def test_windows_launch_rechecks_file_and_uses_interactive_setup(feed, monkeypat
     monkeypatch.setattr('sys.platform', 'win32')
     monkeypatch.setattr('sys.frozen', True, raising=False)
     launches = []
-    monkeypatch.setattr('conxml.updates.subprocess.Popen', lambda args, **kw: launches.append(args))
+    monkeypatch.setattr(updater, '_start_helper', lambda script, *a: launches.append(['powershell.exe', '-File', str(script)]))
     updater.launch(release, path)
     assert launches and launches[0][0] == 'powershell.exe'
     script_path = Path(launches[0][launches[0].index('-File') + 1])
-    script = script_path.read_text(encoding='utf-8')
+    script = script_path.read_text(encoding='utf-8-sig')
     assert f'Wait-Process -Id {os.getpid()}' in script
     assert str(path).replace("'", "''") in script
+    assert script_path.read_bytes().startswith(b'\xef\xbb\xbf')
+    assert 'PYINSTALLER_RESET_ENVIRONMENT' in script
+    assert 'Wait-InstalledProcesses' in script
+    assert '/DIR=' in script and '/LOG=' in script
+    assert 'helper.ready' in script
+    assert 'Remove-Item -LiteralPath $installer' not in script
     path.write_bytes(b'alterado')
     with pytest.raises(UpdateError, match='cambió'):
         updater.launch(release, path)
@@ -374,3 +380,24 @@ def test_data_preservation_during_direct_update(tmp_path, monkeypatch):
     assert (data_dir / 'catalogo.db').read_bytes() == b'CATALOGO SQLITE INTACTO'
     assert json.loads((data_dir / 'preferencias.json').read_text(encoding='utf-8'))['cliente'] == 'DEMO'
     assert boveda_file.read_text(encoding='utf-8') == '<cfdi/>'
+
+
+@pytest.mark.parametrize('contents', [
+    [('conxml.exe', b'gui')],
+    [('conxml.exe', b'gui'), ('conxml-cli.exe', b'cli'), ('conxml.exe', b'duplicate')],
+])
+def test_incomplete_or_duplicate_package_rejected_before_helper(tmp_path, contents):
+    import warnings
+    import zipfile
+    from conxml.updates import Release
+    archive = tmp_path / 'update.zip'
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', UserWarning)
+        with zipfile.ZipFile(archive, 'w') as zipped:
+            for name, payload in contents:
+                zipped.writestr(name, payload)
+    payload = archive.read_bytes()
+    release = Release('0.3.0', '', hashlib.sha256(payload).hexdigest(), len(payload), archive.name)
+    with pytest.raises(UpdateError, match='contener|duplicado'):
+        Updater(tmp_path).apply_update(release, archive)
+    assert not (tmp_path / 'actualizar.ps1').exists()

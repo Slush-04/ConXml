@@ -14,7 +14,7 @@ from conxml.updates import Release, UpdateError, Updater, generar_script_actuali
 @pytest.mark.parametrize('scenario', [
     'child_window', 'root_window', 'root_exited', 'no_window', 'start_failure',
     'rollback_locked', 'rollback_failed', 'backup_failed', 'copy_failed',
-    'missing_cli', 'version_mismatch',
+    'missing_cli', 'version_mismatch', 'bootloader_busy',
 ])
 def test_powershell_recovery(tmp_path, scenario):
     shell = shutil.which('powershell.exe') or shutil.which('pwsh')
@@ -63,10 +63,16 @@ foreach ($p in @($root, $child)) {
     $p | Add-Member ScriptMethod WaitForExit { param($ms) return $this.HasExited }
 }
 function Start-Sleep { param($Milliseconds) }
+function Get-Date { (Microsoft.PowerShell.Utility\Get-Date).AddSeconds($script:clock++ * 61) }
+$script:clock = 0
 function Get-FileHash { throw "Esta prueba no ofrece Get-FileHash" }
 function Get-InstalledVersion { param($cliExe) if ($scenario -eq 'version_mismatch') { return 'conxml 0.0.1' }; return "conxml $ExpectedVersion" }
 function Get-CimInstance {
     param($ClassName, $ErrorAction)
+    if ($scenario -eq 'bootloader_busy') {
+        [pscustomobject]@{ProcessId=88; ExecutablePath=(Join-Path $TargetDir 'conxml.exe')}
+        return
+    }
     [pscustomobject]@{ProcessId=101; ParentProcessId=100; ExecutablePath=$nuevoExe; CreationDate=$child.StartTime}
     # An unrelated application must never count as success or be stopped.
     [pscustomobject]@{ProcessId=999; ParentProcessId=777; ExecutablePath=$nuevoExe; CreationDate=$child.StartTime}
@@ -116,9 +122,9 @@ function Copy-Item {
     else:
         assert staging.exists()
         assert 'Actualización completada exitosamente' not in log_text
-        if scenario in ('rollback_failed', 'backup_failed', 'missing_cli'):
+        if scenario in ('rollback_failed', 'backup_failed', 'missing_cli', 'bootloader_busy'):
             assert 'RELAUNCH' not in log_text
-            if scenario in ('backup_failed', 'missing_cli'):
+            if scenario in ('backup_failed', 'missing_cli', 'bootloader_busy'):
                 assert (target / 'conxml.exe').read_bytes() == b'old conxml.exe'
         else:
             for name in ('conxml.exe', 'conxml-cli.exe'):
@@ -128,7 +134,7 @@ function Copy-Item {
             assert 'Copia bloqueada (2/30)' in log_text
             assert log_text.index('KILL 101') < log_text.index('KILL 100') < log_text.index('Rollback verificado')
     assert 'KILL 999' not in log_text
-    if scenario not in ('backup_failed', 'missing_cli'):
+    if scenario not in ('backup_failed', 'missing_cli', 'bootloader_busy'):
         assert (backup / 'conxml.exe').read_bytes() == b'old conxml.exe'
 
 
@@ -142,6 +148,7 @@ def test_helper_handshake_and_persistent_output(tmp_path, monkeypatch, mode):
     archive = cache / 'update.zip'
     with zipfile.ZipFile(archive, 'w') as zipped:
         zipped.writestr('conxml.exe', b'new executable')
+        zipped.writestr('conxml-cli.exe', b'new cli')
     data = archive.read_bytes()
     release = Release('0.3.0', 'https://example.com/update.zip', hashlib.sha256(data).hexdigest(), len(data), archive.name)
     updater = Updater(cache, current='0.2.0')
