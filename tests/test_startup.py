@@ -3,17 +3,20 @@ import pytest
 from conxml import startup
 
 
-def test_run_gui_propagates_successful_exit_without_startup_error(monkeypatch):
+@pytest.mark.parametrize("code", [None, 0])
+def test_run_gui_propagates_successful_exit_without_startup_error(monkeypatch, tmp_path, code):
+    monkeypatch.setenv("CONXML_LOG_DIR", str(tmp_path))
     dialogs = []
     monkeypatch.setattr(startup.messagebox, "showerror", lambda *args, **kwargs: dialogs.append(args))
 
     def exit_normally():
-        raise SystemExit(0)
+        raise SystemExit(code)
 
     with pytest.raises(SystemExit) as result:
         startup.run_gui(exit_normally)
 
-    assert result.value.code == 0
+    assert result.value.code == code
+    assert not (tmp_path / "startup.log").exists()
     assert dialogs == []
 
 

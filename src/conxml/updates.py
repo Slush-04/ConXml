@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -59,6 +60,7 @@ def generar_script_actualizador(
     backup_dir: Path,
     log_file: Path,
     expected_version: str = "",
+    ready_file: Path | None = None,
 ) -> Path:
     """Genera el script PowerShell que reemplaza los binarios tras el cierre de ConXml."""
     contenido = f"""# Script de actualización desatendida para ConXml
@@ -68,14 +70,15 @@ param(
     [Parameter(Mandatory=$false)][string]$StagingDir = '{str(staging_dir).replace("'", "''")}',
     [Parameter(Mandatory=$false)][string]$BackupDir = '{str(backup_dir).replace("'", "''")}',
     [Parameter(Mandatory=$false)][string]$LogFile = '{str(log_file).replace("'", "''")}',
-    [Parameter(Mandatory=$false)][string]$ExpectedVersion = '{expected_version}'
+    [Parameter(Mandatory=$false)][string]$ExpectedVersion = '{expected_version.replace(chr(39), chr(39) * 2)}',
+    [Parameter(Mandatory=$false)][string]$ReadyFile = '{str(ready_file or "").replace(chr(39), chr(39) * 2)}'
 )
 $ErrorActionPreference = "Stop"
 
 function Write-Log($msg) {{
     $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     $line = "$timestamp [ACTUALIZADOR] $msg"
-    Write-Output $line
+    Write-Host $line
     if ($LogFile) {{
         try {{
             $dir = Split-Path -Parent $LogFile
@@ -85,56 +88,157 @@ function Write-Log($msg) {{
     }}
 }}
 
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-$form = New-Object System.Windows.Forms.Form
-$form.Text = "Actualizando ConXml"
-$form.Width = 470
-$form.Height = 150
-$form.StartPosition = "CenterScreen"
-$form.TopMost = $true
-$form.ControlBox = $false
-$label = New-Object System.Windows.Forms.Label
-$label.Left = 18
-$label.Top = 18
-$label.Width = 420
-$label.Height = 38
-$label.Text = "Preparando actualización..."
-$bar = New-Object System.Windows.Forms.ProgressBar
-$bar.Left = 18
-$bar.Top = 66
-$bar.Width = 420
-$bar.Height = 22
-$bar.Style = "Marquee"
-$bar.MarqueeAnimationSpeed = 24
-$form.Controls.Add($label)
-$form.Controls.Add($bar)
-$form.Show()
-[System.Windows.Forms.Application]::DoEvents()
+trap {{
+    Write-Log "ERROR no controlado: $($_.Exception.Message)"
+    exit 1
+}}
+# El registro existe antes de cargar WinForms; también diagnostica fallos tempranos.
+Write-Log "Iniciando actualización de ConXml $ExpectedVersion para PID $ParentPid hacia $TargetDir"
+$env:PYINSTALLER_RESET_ENVIRONMENT = "1"
+try {{
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Actualizando ConXml"
+    $form.Width = 470
+    $form.Height = 150
+    $form.StartPosition = "CenterScreen"
+    $form.TopMost = $true
+    $form.ControlBox = $false
+    $label = New-Object System.Windows.Forms.Label
+    $label.Left = 18
+    $label.Top = 18
+    $label.Width = 420
+    $label.Height = 38
+    $label.Text = "Preparando actualización..."
+    $bar = New-Object System.Windows.Forms.ProgressBar
+    $bar.Left = 18
+    $bar.Top = 66
+    $bar.Width = 420
+    $bar.Height = 22
+    $bar.Style = "Marquee"
+    $bar.MarqueeAnimationSpeed = 24
+    $form.Controls.Add($label)
+    $form.Controls.Add($bar)
+    $form.Show()
+    [System.Windows.Forms.Application]::DoEvents()
+}} catch {{
+    Write-Log "No se pudo abrir el progreso: $($_.Exception.Message). Continuando con registro."
+    $form = $null
+}}
 
 function Set-UpdateStatus($message, $percent = -1) {{
-    $label.Text = $message
-    if ($percent -ge 0) {{
-        $bar.Style = "Continuous"
-        $bar.MarqueeAnimationSpeed = 0
-        $bar.Value = [Math]::Max(0, [Math]::Min(100, $percent))
-    }} else {{
-        $bar.Style = "Marquee"
-        $bar.MarqueeAnimationSpeed = 24
+    if ($null -ne $form) {{
+        $label.Text = $message
+        if ($percent -ge 0) {{
+            $bar.Style = "Continuous"
+            $bar.MarqueeAnimationSpeed = 0
+            $bar.Value = [Math]::Max(0, [Math]::Min(100, $percent))
+        }} else {{
+            $bar.Style = "Marquee"
+            $bar.MarqueeAnimationSpeed = 24
+        }}
+        $form.Refresh()
+        [System.Windows.Forms.Application]::DoEvents()
     }}
-    $form.Refresh()
-    [System.Windows.Forms.Application]::DoEvents()
     Write-Log $message
 }}
 
 function Show-UpdateFailure($message) {{
     Write-Log "ERROR: $message"
-    [System.Windows.Forms.MessageBox]::Show("$message`n`nRevisa el diagnóstico en:`n$LogFile", "No se pudo actualizar ConXml", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
-    $form.Close()
+    if ($null -ne $form) {{
+        [System.Windows.Forms.MessageBox]::Show("$message`n`nRevisa el diagnóstico en:`n$LogFile", "No se pudo actualizar ConXml", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+        $form.Close()
+    }}
 }}
 
-Write-Log "Iniciando actualización de ConXml $ExpectedVersion para PID $ParentPid hacia $TargetDir"
+function Get-InstalledVersion($cliExe) {{
+    $version = (& $cliExe --version | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) {{ throw "Falló la consulta de versión del CLI." }}
+    return $version
+}}
+
+function Copy-WithRetry($source, $destination) {{
+    for ($attempt = 1; $attempt -le 30; $attempt++) {{
+        try {{
+            Copy-Item -LiteralPath $source -Destination $destination -Force -ErrorAction Stop
+            if ((Get-FileHash -LiteralPath $source).Hash -ne (Get-FileHash -LiteralPath $destination).Hash) {{
+                throw "El archivo copiado no coincide con el original."
+            }}
+            return
+        }} catch {{
+            if ($attempt -eq 30) {{ throw }}
+            Write-Log "Copia bloqueada ($attempt/30): $destination; $($_.Exception.Message)"
+            Start-Sleep -Milliseconds 500
+        }}
+    }}
+}}
+
+# Conservar los objetos Process permite comprobar identidad aunque Windows reuse un PID.
+$script:launched = @{{}}
+function Update-LaunchedProcesses {{
+    $snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+    do {{
+        $added = $false
+        foreach ($item in $snapshot) {{
+            $id = [int]$item.ProcessId
+            $parent = $script:launched[[int]$item.ParentProcessId]
+            if ($null -ne $parent -and -not $script:launched.ContainsKey($id)) {{
+                if ($item.ExecutablePath -ne $nuevoExe) {{ continue }}
+                try {{
+                    if ($item.CreationDate -lt $parent.StartTime) {{ continue }}
+                    $child = Get-Process -Id $id -ErrorAction Stop
+                    $null = $child.Handle
+                    $script:launched[$id] = $child
+                    $added = $true
+                }} catch {{}}
+            }}
+        }}
+    }} while ($added)
+}}
+
+function Stop-LaunchedProcesses {{
+    if ($script:launched.Count -eq 0) {{ return }}
+    # Si no se puede enumerar el árbol, no sobrescribir binarios todavía en uso.
+    Update-LaunchedProcesses
+    $processes = @($script:launched.Values | Sort-Object StartTime -Descending)
+    foreach ($process in $processes) {{
+        if (-not $process.HasExited) {{
+            try {{ $process.Kill() }} catch {{
+                if (-not $process.HasExited) {{ throw }}
+            }}
+        }}
+    }}
+    foreach ($process in $processes) {{
+        if (-not $process.WaitForExit(15000)) {{ throw "No terminó PID $($process.Id)." }}
+    }}
+}}
+
+$backedUp = @()
+$changed = @()
+function Restore-Backup {{
+    try {{
+        Stop-LaunchedProcesses
+        foreach ($file in $changed) {{
+            $destination = Join-Path $TargetDir $file
+            if ($backedUp -contains $file) {{
+                Copy-WithRetry (Join-Path $BackupDir $file) $destination
+            }} else {{
+                Remove-Item -LiteralPath $destination -Force -ErrorAction SilentlyContinue
+                if (Test-Path -LiteralPath $destination) {{ throw "No se pudo retirar $destination" }}
+            }}
+        }}
+        Write-Log "Rollback verificado. Relanzando versión anterior."
+        Start-Process -FilePath (Join-Path $TargetDir "conxml.exe") -WorkingDirectory $TargetDir
+        return $true
+    }} catch {{
+        Write-Log "ERROR crítico durante rollback: $($_.Exception.Message). Respaldo conservado en $BackupDir. No se relanza."
+        return $false
+    }}
+}}
+
 Set-UpdateStatus "Cerrando ConXml para instalar la actualización..."
+if ($ReadyFile) {{ Set-Content -LiteralPath $ReadyFile -Value "ready" -Encoding ascii }}
 
 # 1. Esperar a que el proceso padre termine
 if ($ParentPid -gt 0) {{
@@ -157,145 +261,94 @@ if ($ParentPid -gt 0) {{
 
 Start-Sleep -Milliseconds 600
 
-# 2. Respaldar binarios existentes
+# 2. Respaldar todo antes de reemplazar; nunca restaurar un respaldo de otra corrida.
 Set-UpdateStatus "Guardando respaldo de la versión anterior..." 15
-if (-not (Test-Path $BackupDir)) {{
-    New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null
-}}
-
 $archivos = @("conxml.exe", "conxml-cli.exe")
-$faltante = $false
-foreach ($f in $archivos) {{
-    $origen = Join-Path $StagingDir $f
-    if (-not (Test-Path -LiteralPath $origen -PathType Leaf) -or (Get-Item -LiteralPath $origen).Length -le 0) {{
-        Write-Log "ERROR: El paquete no contiene un $f válido."
-        $faltante = $true
-    }}
-}}
-if ($faltante) {{
-    Write-Log "No se modificó la instalación porque el paquete está incompleto."
-    exit 1
-}}
-
-foreach ($f in $archivos) {{
-    $actual = Join-Path $TargetDir $f
-    if (Test-Path $actual) {{
-        try {{
-            Copy-Item -Path $actual -Destination (Join-Path $BackupDir $f) -Force
-            Write-Log "Respaldado $f en $BackupDir"
-        }} catch {{
-            Write-Log "ADVERTENCIA: no se pudo respaldar ${{f}}: ${{_}}"
-        }}
-    }}
-}}
-
-# 3. Reemplazar binarios desde staging
-Set-UpdateStatus "Instalando ConXml $ExpectedVersion..." 45
-$fallo = $false
-$indiceArchivo = 0
-foreach ($f in $archivos) {{
-    $origen = Join-Path $StagingDir $f
-    if (Test-Path $origen) {{
-        $destino = Join-Path $TargetDir $f
-        try {{
-            Set-UpdateStatus "Instalando $f..." (45 + ($indiceArchivo * 25))
-            Copy-Item -Path $origen -Destination $destino -Force
-            $hashOrigen = (Get-FileHash -LiteralPath $origen -Algorithm SHA256).Hash
-            $hashDestino = (Get-FileHash -LiteralPath $destino -Algorithm SHA256).Hash
-            if ($hashOrigen -ne $hashDestino) {{
-                throw "La copia de $f no coincide con el archivo descargado."
-            }}
-            Write-Log "Verificado $f (SHA-256 $hashDestino) en $destino"
-        }} catch {{
-            Write-Log "ERROR al copiar ${{f}}: ${{_}}"
-            $fallo = $true
-            break
-        }}
-    }}
-    $indiceArchivo += 1
-}}
-
-# El CLI comparte el mismo paquete Python que la interfaz y permite comprobar
-# la versión embebida antes de relanzar ConXml.
-if (-not $fallo) {{
-    try {{
-        $cliExe = Join-Path $TargetDir "conxml-cli.exe"
-        $versionInstalada = (& $cliExe --version | Out-String).Trim()
-        if ($LASTEXITCODE -ne 0 -or $versionInstalada -ne "conxml $ExpectedVersion") {{
-            throw "Se esperaba conxml $ExpectedVersion y el ejecutable instalado reportó '$versionInstalada'."
-        }}
-        Write-Log "Versión comprobada antes del arranque: $versionInstalada"
-    }} catch {{
-        Write-Log "ERROR al comprobar la versión instalada: $($_.Exception.Message)"
-        $fallo = $true
-    }}
-}}
-
-# 4. Rollback en caso de fallo al copiar
-if ($fallo) {{
-    Write-Log "Fallo en reemplazo. Restaurando respaldo (rollback)..."
-    foreach ($f in $archivos) {{
-        $bak = Join-Path $BackupDir $f
-        if (Test-Path $bak) {{
-            try {{
-                Copy-Item -Path $bak -Destination (Join-Path $TargetDir $f) -Force
-                Write-Log "Restaurado $f desde respaldo."
-            }} catch {{
-                Write-Log "ERROR crítico al restaurar ${{f}}: ${{_}}"
-            }}
-        }}
-    }}
-    $exeRestaurado = Join-Path $TargetDir "conxml.exe"
-    if (Test-Path $exeRestaurado) {{
-        Start-Process -FilePath $exeRestaurado
-        Write-Log "Relanzada versión anterior tras rollback."
-    }}
-    Show-UpdateFailure "No se pudieron reemplazar los archivos. Se restauró la versión anterior."
-    exit 1
-}}
-
-# 5. Relanzar el ejecutable actualizado
-$nuevoExe = Join-Path $TargetDir "conxml.exe"
-if (Test-Path $nuevoExe) {{
-    Set-UpdateStatus "Iniciando ConXml $ExpectedVersion para comprobar la actualización..." 85
-    $nuevoProc = Start-Process -FilePath $nuevoExe -PassThru
-    $ventanaAbierta = $false
-    for ($i = 0; $i -lt 40; $i++) {{
-        Start-Sleep -Milliseconds 500
-        try {{
-            $nuevoProc.Refresh()
-            if ($nuevoProc.HasExited) {{ break }}
-            if ($nuevoProc.MainWindowHandle -ne [IntPtr]::Zero) {{ $ventanaAbierta = $true; break }}
-        }} catch {{}}
-        [System.Windows.Forms.Application]::DoEvents()
-    }}
-    if (-not $ventanaAbierta) {{
-        if (-not $nuevoProc.HasExited) {{ Stop-Process -Id $nuevoProc.Id -Force -ErrorAction SilentlyContinue }}
-        Write-Log "ERROR: ConXml $ExpectedVersion no abrió una ventana. Ejecutando rollback."
-        foreach ($f in $archivos) {{
-            $bak = Join-Path $BackupDir $f
-            if (Test-Path $bak) {{
-                Copy-Item -Path $bak -Destination (Join-Path $TargetDir $f) -Force
-            }}
-        }}
-        Start-Process -FilePath $nuevoExe
-        Show-UpdateFailure "ConXml $ExpectedVersion no pudo abrir su ventana. Se restauró la versión anterior."
-        exit 1
-    }}
-}} else {{
-    Show-UpdateFailure "No se encontró el ejecutable de ConXml después de instalar."
-    exit 1
-}}
-
-# 6. Limpieza de staging
 try {{
-    Remove-Item -Path $StagingDir -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null
+    foreach ($f in $archivos) {{
+        $origen = Join-Path $StagingDir $f
+        if (-not (Test-Path -LiteralPath $origen -PathType Leaf) -or
+            (Get-Item -LiteralPath $origen).Length -le 0) {{
+            throw "El paquete no contiene un $f válido."
+        }}
+    }}
+    foreach ($f in $archivos) {{
+        $actual = Join-Path $TargetDir $f
+        if (Test-Path -LiteralPath $actual) {{
+            Copy-WithRetry $actual (Join-Path $BackupDir $f)
+            $backedUp += $f
+            Write-Log "Respaldado $f en $BackupDir"
+        }}
+    }}
+}} catch {{
+    Show-UpdateFailure "No se pudo preparar el respaldo. No se cambiaron los archivos: $($_.Exception.Message)"
+    exit 1
+}}
+
+# 3. Reemplazar, incluyendo en rollback una copia que haya quedado incompleta.
+try {{
+    foreach ($f in $archivos) {{
+        $origen = Join-Path $StagingDir $f
+        if (Test-Path -LiteralPath $origen) {{
+            Set-UpdateStatus "Instalando $f..." 45
+            $changed += $f
+            Copy-WithRetry $origen (Join-Path $TargetDir $f)
+            Write-Log "Instalado $f"
+        }}
+    }}
+
+    # Confirmar que el ZIP instalado reporta la versión esperada.
+    $cliExe = Join-Path $TargetDir "conxml-cli.exe"
+    $versionInstalada = Get-InstalledVersion $cliExe
+    if ($versionInstalada -ne "conxml $ExpectedVersion") {{
+        throw "Se esperaba conxml $ExpectedVersion y el ejecutable instalado reportó '$versionInstalada'."
+    }}
+    Write-Log "Versión comprobada antes del arranque: $versionInstalada"
+
+    # 4. PyInstaller onefile abre la GUI en un hijo del bootloader.
+    $nuevoExe = Join-Path $TargetDir "conxml.exe"
+    Set-UpdateStatus "Iniciando ConXml $ExpectedVersion para comprobar la actualización..." 85
+    $nuevoProc = Start-Process -FilePath $nuevoExe -WorkingDirectory $TargetDir -PassThru
+    $null = $nuevoProc.Handle
+    $script:launched[$nuevoProc.Id] = $nuevoProc
+    $ventanaAbierta = $false
+    for ($i = 0; $i -lt 120; $i++) {{
+        Update-LaunchedProcesses
+        foreach ($process in @($script:launched.Values)) {{
+            $process.Refresh()
+            if (-not $process.HasExited -and $process.MainWindowHandle -ne [IntPtr]::Zero) {{
+                Write-Log "Ventana detectada en PID $($process.Id) (lanzador $($nuevoProc.Id))."
+                $ventanaAbierta = $true
+                break
+            }}
+        }}
+        if ($ventanaAbierta) {{ break }}
+        if ($null -ne $form) {{ [System.Windows.Forms.Application]::DoEvents() }}
+        Start-Sleep -Milliseconds 500
+    }}
+    if (-not $ventanaAbierta) {{ throw "ConXml $ExpectedVersion no abrió una ventana en 60 segundos." }}
+}} catch {{
+    Write-Log "ERROR de actualización: $($_.Exception.Message). Iniciando rollback."
+    if (Restore-Backup) {{
+        Show-UpdateFailure "No se completó la actualización. Se restauró y relanzó la versión anterior."
+    }} else {{
+        Show-UpdateFailure "No se completó la restauración. No se relanzó ConXml. Conserva el respaldo en $BackupDir y consulta el registro."
+    }}
+    exit 1
+}}
+
+# 5. Limpieza de staging
+try {{
+    Remove-Item -LiteralPath $StagingDir -Recurse -Force -ErrorAction SilentlyContinue
 }} catch {{}}
 
 Set-UpdateStatus "ConXml $ExpectedVersion se abrió correctamente. Actualización completada." 100
 Write-Log "Actualización completada exitosamente."
+if ($null -ne $form) {{
 [System.Windows.Forms.MessageBox]::Show("ConXml se actualizó a la versión $ExpectedVersion y se abrió correctamente.", "Actualización completada", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
 $form.Close()
+}}
 """
     script_path.parent.mkdir(parents=True, exist_ok=True)
     # Windows PowerShell 5.1 interpreta archivos UTF-8 sin BOM como ANSI.
@@ -505,9 +558,12 @@ class Updater:
                 target_dir = self.cache / "installed"
                 target_dir.mkdir(parents=True, exist_ok=True)
 
-        backup_dir = self.cache / "backup"
+        backup_root = self.cache / "backup"
+        backup_root.mkdir(parents=True, exist_ok=True)
+        backup_dir = Path(tempfile.mkdtemp(prefix="attempt-", dir=backup_root))
         log_file = Config().logs_dir / "actualizacion.log"
         script_path = self.cache / "actualizar.ps1"
+        ready_file = backup_dir / "helper.ready"
 
         generar_script_actualizador(
             script_path,
@@ -517,12 +573,15 @@ class Updater:
             backup_dir=backup_dir,
             log_file=log_file,
             expected_version=release.version,
+            ready_file=ready_file,
         )
 
         if sys.platform == "win32" and not self.demo and getattr(sys, "frozen", False):
             cmd = [
                 "powershell.exe",
                 "-NoProfile",
+                "-NonInteractive",
+                "-STA",
                 "-ExecutionPolicy", "Bypass",
                 "-WindowStyle", "Hidden",
                 "-File", str(script_path),
@@ -532,7 +591,28 @@ class Updater:
                 flags |= subprocess.DETACHED_PROCESS
             if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
                 flags |= subprocess.CREATE_NEW_PROCESS_GROUP
-            subprocess.Popen(cmd, creationflags=flags, close_fds=True)
+            # Persistir también errores de parser/arranque, anteriores a Write-Log.
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+            launch_log = log_file.with_name("actualizacion-launcher.log")
+            with launch_log.open("ab", buffering=0) as output:
+                output.write(f"\nLanzando actualización {release.version}: {script_path}\n".encode("utf-8"))
+                helper = subprocess.Popen(
+                    cmd, creationflags=flags, close_fds=True,
+                    stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
+                    cwd=str(self.cache),
+                    env={**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"},
+                )
+            deadline = time.monotonic() + 15
+            while not ready_file.is_file():
+                if helper.poll() is not None:
+                    raise UpdateError(f"El actualizador terminó antes de iniciar. Revisa {launch_log}")
+                if time.monotonic() >= deadline:
+                    helper.terminate()
+                    helper.wait(timeout=5)
+                    raise UpdateError(f"El actualizador no confirmó su arranque. Revisa {launch_log}")
+                time.sleep(0.1)
+            if helper.poll() is not None:
+                raise UpdateError(f"El actualizador terminó después de confirmar su arranque. Revisa {launch_log}")
 
         return script_path
 
