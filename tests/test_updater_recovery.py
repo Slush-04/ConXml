@@ -83,7 +83,7 @@ function Get-Process {
     if ($Id -eq 101) { return $child }
     throw "Unexpected process $Id"
 }
-function Start-Process {
+function Start-InstalledApplication {
     param($FilePath, $WorkingDirectory, [switch]$PassThru)
     if ($env:PYINSTALLER_RESET_ENVIRONMENT -ne '1') { throw 'Environment not reset' }
     if ($WorkingDirectory -ne $TargetDir) { throw 'Wrong working directory' }
@@ -220,3 +220,31 @@ def test_frozen_windowed_launcher_starts_system_powershell(tmp_path):
                             capture_output=True, timeout=40)
     assert result.returncode == 0, log.read_bytes() if log.exists() else result.stderr
     assert marker.read_text(encoding='ascii').strip() == 'ready'
+
+
+def test_native_launcher_accepts_literal_special_character_path(tmp_path):
+    from conxml.updates import START_INSTALLED_APPLICATION
+    shell = shutil.which('powershell.exe') or shutil.which('pwsh')
+    executable = shutil.which('hostname')
+    if not shell or not executable:
+        pytest.skip('Requiere PowerShell y hostname del sistema')
+    directory = tmp_path / "app [prueba]'á"
+    directory.mkdir()
+    target = directory / ('app.exe' if os.name == 'nt' else 'app')
+    if os.name == "nt":
+        shutil.copyfile(executable, target)
+    else:
+        target.write_text("#!/bin/sh\nexit 0\n")
+    target.chmod(0o755)
+    quote = lambda path: str(path).replace("'", "''")
+    script = tmp_path / 'native-launch.ps1'
+    script.write_text(
+        "$ErrorActionPreference = 'Stop'\n" + START_INSTALLED_APPLICATION +
+        f"\n$p = Start-InstalledApplication -FilePath '{quote(target)}' -WorkingDirectory '{quote(directory)}' -PassThru\n"
+        "if (-not $p.WaitForExit(10000)) { $p.Kill(); exit 2 }\n"
+        "exit $p.ExitCode\n",
+        encoding='utf-8-sig',
+    )
+    result = subprocess.run([shell, '-NoProfile', '-NonInteractive', '-File', str(script)],
+                            capture_output=True, timeout=20)
+    assert result.returncode == 0, result.stderr.decode(errors='replace')

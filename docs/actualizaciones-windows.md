@@ -13,6 +13,11 @@ Release consultada durante esta investigación fue v0.2.23 y contiene ambos form
   botón ahora usa grid. Este error de interfaz es independiente de detectar o
   descargar correctamente una actualización.
 
+- La prueba con ejecutables reales reprodujo un fallo adicional en Windows
+  PowerShell 5.1: después de copiar y validar la versión, Start-Process falló con
+  "Unable to find the specified file" al relanzar desde la ruta con corchetes y
+  apóstrofe. El arranque y el relanzamiento tras rollback ahora usan directamente
+  ProcessStartInfo con FileName y WorkingDirectory literales y UseShellExecute=false.
 - PyInstaller onefile ejecuta un bootloader y un hijo con la GUI. Esperar solo al
   PID de la GUI no garantiza que el archivo del bootloader esté liberado. El helper
   ahora espera a que desaparezcan los procesos cuyo ExecutablePath coincide con

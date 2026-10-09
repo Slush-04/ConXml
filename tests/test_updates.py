@@ -182,6 +182,7 @@ try:
     root.withdraw()
     app = ConXmlApp(root, cliente_actual='DEMO')
     controller = app.actualizaciones
+    controller.updater.current = "0.2.0"
     controller.check(manual=True)
     deadline = time.monotonic() + 5
     while controller.release is None and time.monotonic() < deadline:

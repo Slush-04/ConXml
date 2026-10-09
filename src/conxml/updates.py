@@ -71,6 +71,20 @@ function Wait-InstalledProcesses {
 """
 
 
+START_INSTALLED_APPLICATION = r"""
+function Start-InstalledApplication {
+    param([string]$FilePath, [string]$WorkingDirectory, [switch]$PassThru)
+    # Evitar resolución de rutas/comodines y ShellExecute de PowerShell 5.1.
+    $info = New-Object System.Diagnostics.ProcessStartInfo
+    $info.FileName = $FilePath
+    $info.WorkingDirectory = $WorkingDirectory
+    $info.UseShellExecute = $false
+    $process = [System.Diagnostics.Process]::Start($info)
+    if ($PassThru) { return $process }
+}
+"""
+
+
 def generar_script_actualizador(
     script_path: Path,
     *,
@@ -206,6 +220,8 @@ function Copy-WithRetry($source, $destination) {{
     }}
 }}
 
+{START_INSTALLED_APPLICATION}
+
 # Conservar los objetos Process permite comprobar identidad aunque Windows reuse un PID.
 $script:launched = @{{}}
 function Update-LaunchedProcesses {{
@@ -261,7 +277,7 @@ function Restore-Backup {{
             }}
         }}
         Write-Log "Rollback verificado. Relanzando versión anterior."
-        Start-Process -FilePath (Join-Path $TargetDir "conxml.exe") -WorkingDirectory $TargetDir
+        Start-InstalledApplication -FilePath (Join-Path $TargetDir "conxml.exe") -WorkingDirectory $TargetDir
         return $true
     }} catch {{
         Write-Log "ERROR crítico durante rollback: $($_.Exception.Message). Respaldo conservado en $BackupDir. No se relanza."
@@ -347,7 +363,7 @@ try {{
     # 4. PyInstaller onefile abre la GUI en un hijo del bootloader.
     $nuevoExe = Join-Path $TargetDir "conxml.exe"
     Set-UpdateStatus "Iniciando ConXml $ExpectedVersion para comprobar la actualización..." 85
-    $nuevoProc = Start-Process -FilePath $nuevoExe -WorkingDirectory $TargetDir -PassThru
+    $nuevoProc = Start-InstalledApplication -FilePath $nuevoExe -WorkingDirectory $TargetDir -PassThru
     $null = $nuevoProc.Handle
     $script:launched[$nuevoProc.Id] = $nuevoProc
     $ventanaAbierta = $false
