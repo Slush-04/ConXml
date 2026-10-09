@@ -88,7 +88,7 @@ class PantallaDescargas(ctk.CTkFrame):
         self._btn_quitar_firma = BotonSecundario(acciones_firma, "Quitar guardada", self._quitar_archivos_firma)
         self._btn_quitar_firma.pack(side="left", padx=(0, 8))
         self._btn_seguimiento = BotonSecundario(
-            cred, "Activar seguimiento", self._alternar_seguimiento,
+            acciones_firma, "Activar seguimiento", self._alternar_seguimiento,
         )
         self._btn_seguimiento.pack(side="left")
 
