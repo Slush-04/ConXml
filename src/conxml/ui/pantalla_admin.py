@@ -48,6 +48,7 @@ from conxml.ui import theme as th
 from conxml.ui.selector_fecha import SelectorFecha
 from conxml.ui import responsive as resp
 from conxml.ui.columnas import GestorColumnas
+from conxml.ui.iconos import icono
 from conxml.ui.widgets import (
     BotonPrimario,
     BotonSecundario,
@@ -924,7 +925,8 @@ class PantallaAdministracion(ctk.CTkFrame):
         )
         marco_acciones.agregar(self._chk_force)
 
-        self._btn_columnas = BotonSecundario(marco_acciones, "Columnas", self._abrir_columnas)
+        self._btn_columnas = BotonSecundario(marco_acciones, "", self._abrir_columnas,
+                                               image=icono("columnas", th.TEXTO), width=32)
         marco_acciones.agregar(self._btn_columnas)
 
         self._btn_ampliar = BotonSecundario(marco_acciones, "Ampliar tabla", self._alternar_tabla_ampliada)

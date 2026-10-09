@@ -35,6 +35,10 @@ def icono(nombre: str, color: str, tamano: int = 18) -> ctk.CTkImage:
         for y, x in ((5, 8), (12, 16), (19, 10)):
             linea([(3, y), (21, y)])
             dibujo.ellipse(((x-2)*escala, (y-2)*escala, (x+2)*escala, (y+2)*escala), fill=color)
+    elif nombre == "columnas":
+        caja((3, 4, 21, 20))
+        for x in (9, 15):
+            linea([(x, 4), (x, 20)])
     elif nombre == "menu":
         for y in (6, 12, 18):
             linea([(4, y), (20, y)])
