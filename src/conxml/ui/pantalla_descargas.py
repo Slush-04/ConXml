@@ -86,19 +86,11 @@ class PantallaDescargas(ctk.CTkFrame):
         self._btn_guardar_firma = BotonSecundario(acciones_firma, "Guardar e.firma", self._guardar_archivos_firma)
         self._btn_guardar_firma.pack(side="left", padx=(0, 8))
         self._btn_quitar_firma = BotonSecundario(acciones_firma, "Quitar guardada", self._quitar_archivos_firma)
-        self._btn_quitar_firma.pack(side="left")
-        self._firma_local_lbl = ctk.CTkLabel(cred, text="", text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA), anchor="w", justify="left", wraplength=430)
-        self._firma_local_lbl.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+        self._btn_quitar_firma.pack(side="left", padx=(0, 8))
         self._btn_seguimiento = BotonSecundario(
             cred, "Activar seguimiento", self._alternar_seguimiento,
         )
-        self._btn_seguimiento.grid(row=9, column=0, columnspan=2, pady=(0, 4), sticky="w")
-        self._seguimiento_lbl = ctk.CTkLabel(
-            cred, text="Para vigilar solicitudes anteriores, ingresa la contraseña una vez y activa el seguimiento.",
-            text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA),
-            anchor="w", justify="left", wraplength=430,
-        )
-        self._seguimiento_lbl.grid(row=10, column=0, columnspan=2, sticky="ew")
+        self._btn_seguimiento.pack(side="left")
 
         solicitud = ctk.CTkFrame(formulario, fg_color="transparent")
         solicitud.grid(row=0, column=2, sticky="nsew", padx=(12, 16), pady=14)
@@ -126,12 +118,8 @@ class PantallaDescargas(ctk.CTkFrame):
             else:
                 entrada = SelectorFecha(grupo, variable=variable, anio_completo=True)
             entrada.pack(fill="x", pady=(2, 0))
-        ctk.CTkLabel(
-            solicitud, text="Para CFDI recibidos, el SAT permite descargar XML vigentes.",
-            text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA), anchor="w",
-        ).grid(row=3, column=0, sticky="ew", pady=(4, 0))
         self._btn_solicitar = BotonPrimario(solicitud, "Solicitar al SAT", self._solicitar)
-        self._btn_solicitar.grid(row=2, column=0, sticky="e", pady=(4, 0))
+        self._btn_solicitar.grid(row=2, column=0, pady=(4, 0), sticky="")
 
         historial = PanelCard(self._contenedor)
         historial.pack(fill="both", expand=True, pady=(0, 8))
@@ -219,14 +207,6 @@ class PantallaDescargas(ctk.CTkFrame):
     def _actualizar_aviso_seguimiento(self) -> None:
         activo = self._rfc_visible in self._firmas_activas
         self._btn_seguimiento.configure(text="Detener seguimiento" if activo else "Activar seguimiento")
-        if activo:
-            self._seguimiento_lbl.configure(
-                text="Seguimiento activo. ConXml consulta cada minuto y recupera los paquetes listos mientras permanezca abierto."
-            )
-        else:
-            self._seguimiento_lbl.configure(
-                text="Para vigilar solicitudes anteriores, ingresa la contraseña una vez y activa el seguimiento."
-            )
 
     def _guardar_firma(self, fiel: CredencialEFirma) -> None:
         self._firmas_activas[fiel.rfc] = fiel
@@ -355,10 +335,6 @@ class PantallaDescargas(ctk.CTkFrame):
             self._cer.set(str(guardados[0]) if guardados else "")
             self._key.set(str(guardados[1]) if guardados else "")
         guardados = archivos_guardados(Config(), cliente)
-        self._firma_local_lbl.configure(text=(
-            "e.firma guardada para este cliente. La contraseña se solicita en cada sesión."
-            if guardados else "Sin e.firma guardada para este cliente. Selecciona ambos archivos y pulsa Guardar e.firma."
-        ))
         self._btn_quitar_firma.configure(state="normal" if guardados else "disabled")
 
     def _guardar_archivos_firma(self) -> None:
