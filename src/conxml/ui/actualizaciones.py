@@ -18,7 +18,7 @@ class Actualizaciones:
     def __init__(self, app):
         self.app = app
         # Cache fuera del expediente y respaldos; la demo respeta CONXML_DATA_DIR.
-        self.updater = Updater(Config().base.parent / 'updates')
+        self.updater = Updater(Config().updates_dir)
         self.release = None
         self.path = None
         self.queue = queue.Queue()
