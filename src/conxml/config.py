@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 import sys
 import shutil
 import tempfile
@@ -17,7 +18,8 @@ class Config:
     En un ejecutable empaquetado (PyInstaller):
     - En macOS (.app bundle o binario): se utiliza ~/Library/Application Support/ConXml
       para cumplir con los permisos del sistema operativo y no alterar el bundle.
-    - En Windows: %LOCALAPPDATA%/ConXml/data, persistente y escribible por usuario.
+    - La ubicación elegida en el primer inicio se recuerda fuera del directorio de datos.
+    - En Windows, instalaciones anteriores conservan %LOCALAPPDATA%/ConXml/data.
     - En Linux: datos junto al ejecutable.
     - Se puede sobreescribir la ruta mediante la variable de entorno CONXML_DATA_DIR.
     """
@@ -28,6 +30,9 @@ class Config:
         if env_dir:
             return Path(env_dir).resolve()
         if getattr(sys, "frozen", False):
+            seleccion = self.ubicacion_guardada
+            if seleccion is not None:
+                return seleccion
             if sys.platform == "win32":
                 base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "ConXml" / "data"
                 migrar_datos_windows(Path(sys.executable).resolve().parent / "data", base)
@@ -38,6 +43,46 @@ class Config:
                 return app_support
             return Path(sys.executable).resolve().parent / "data"
         return Path(__file__).resolve().parents[2] / "data"
+
+    @property
+    def ubicacion_path(self) -> Path:
+        """Registro independiente de los datos y de la versión instalada."""
+        if sys.platform == "win32":
+            root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "ConXml"
+        elif sys.platform == "darwin":
+            root = Path.home() / "Library" / "Application Support" / "ConXml"
+        else:
+            root = Path.home() / ".config" / "ConXml"
+        return root / "ubicacion-datos.json"
+
+    @property
+    def ubicacion_guardada(self) -> Path | None:
+        try:
+            value = json.loads(self.ubicacion_path.read_text(encoding="utf-8"))["carpeta_datos"]
+        except FileNotFoundError:
+            return None
+        except (ValueError, KeyError, TypeError) as exc:
+            raise OSError("El registro de ubicación de datos no es válido.") from exc
+        if not isinstance(value, str) or not value or not Path(value).is_absolute():
+            raise OSError("La ubicación de datos guardada no es válida.")
+        return Path(value)
+
+    def guardar_ubicacion(self, destino: Path) -> None:
+        destino = destino.expanduser().resolve()
+        destino.mkdir(parents=True, exist_ok=True)
+        # Comprueba escritura antes de recordar una ubicación que no funcionaría.
+        with tempfile.TemporaryFile(dir=destino) as prueba:
+            prueba.write(b"ConXml")
+        registro = self.ubicacion_path
+        registro.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=registro.parent,
+                                         prefix=".ubicacion-", delete=False) as output:
+            temporal = Path(output.name)
+            json.dump({"carpeta_datos": str(destino)}, output, ensure_ascii=False)
+        try:
+            os.replace(temporal, registro)
+        finally:
+            temporal.unlink(missing_ok=True)
 
     @property
     def db_path(self) -> Path:

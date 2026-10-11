@@ -35,6 +35,7 @@ from conxml.ui.pantalla_resumen import PantallaResumen
 from conxml.ui.iconos import icono
 from conxml.ui.actualizaciones import Actualizaciones
 from conxml.ui.introduccion import primera_apertura, mostrar_introduccion
+from conxml.ui.ubicacion_datos import preparar_ubicacion
 
 SECCIONES = [
     ("admin_xml", "COMPROBANTES", [
@@ -864,6 +865,9 @@ def main() -> None:
         # que puede dejar el proceso vivo sin una ventana en algunos equipos.
         try:
             logger.info("Preparando carpetas locales")
+            if not preparar_ubicacion(raiz):
+                raiz.destroy()
+                return
             Config().inicializar()
         except OSError as exc:
             messagebox.showerror('Datos de ConXml', f'No se pudieron preparar las carpetas de datos:\n{exc}', parent=raiz)
