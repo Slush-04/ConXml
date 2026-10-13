@@ -8,6 +8,17 @@ from conxml.ui.app import ConXmlApp
 from conxml.ui.pantalla_descargas import PantallaDescargas
 
 
+def preparar_estado_operacion(app, pantalla=None):
+    app._pantalla_actual = pantalla
+    app._cierre_solicitado = False
+    app._estado_operacion = SimpleNamespace(grid=lambda: None, grid_remove=lambda: None)
+    app._texto_operacion = SimpleNamespace(configure=lambda **kw: None)
+    app._progreso_operacion = SimpleNamespace(
+        configure=lambda **kw: None, start=lambda: None, stop=lambda: None, set=lambda valor: None,
+    )
+    app.winfo_exists = lambda: True
+
+
 @pytest.mark.parametrize("error,esperado", [
     (ErrorDescargaSAT("Revisa la contraseña de la llave .key."), "Revisa la contraseña"),
     (RuntimeError("detalle interno"), "Consulta el archivo de diagnóstico"),
@@ -23,6 +34,7 @@ def test_error_sat_muestra_causa_y_restaura_estado(monkeypatch, error, esperado)
         _ocupada=False, _cola=queue.Queue(), _pantallas={"descargas": pantalla},
         registro=lambda texto: None, after=lambda *args: None, _procesar_cola=lambda: None,
     )
+    preparar_estado_operacion(app)
     app._terminar_operacion = lambda: ConXmlApp._terminar_operacion(app)
     # Ejecuta el worker determinísticamente; su resultado se presenta solo al vaciar la cola.
     monkeypatch.setattr("conxml.ui.app.threading.Thread", lambda target, **kw: SimpleNamespace(start=target))
@@ -49,6 +61,7 @@ def test_operacion_sin_callback_conserva_error_generico(monkeypatch):
         _ocupada=False, _cola=queue.Queue(), _pantallas={}, registro=lambda texto: None,
         after=lambda *args: None, _procesar_cola=lambda: None,
     )
+    preparar_estado_operacion(app)
     app._terminar_operacion = lambda: ConXmlApp._terminar_operacion(app)
     def trabajo():
         raise RuntimeError("detalle interno")
