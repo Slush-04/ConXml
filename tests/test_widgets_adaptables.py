@@ -99,7 +99,15 @@ def test_visor_pdf_conserva_acciones_en_dialogo_estrecho(tmp_path, monkeypatch):
         raiz.update_idletasks()
         monkeypatch.setattr(resp, 'area_util', lambda _: (0, 0, 420, 640))
         visor = VisorPDF(raiz, ruta)
-        raiz.update_idletasks()
+        # Windows aplica el mapeo del Toplevel mediante eventos; las tareas
+        # idle por sí solas pueden dejar controles con geometría provisional.
+        import time
+        limite = time.monotonic() + 3
+        while not visor.winfo_viewable() and time.monotonic() < limite:
+            raiz.update()
+            time.sleep(0.01)
+        raiz.update()
+        assert visor.winfo_viewable()
         barras = [h for h in visor.winfo_children() if isinstance(h, BarraAdaptable)]
         assert len(barras) == 2
         assert len({h.winfo_y() for h in barras[0]._elementos}) > 1
