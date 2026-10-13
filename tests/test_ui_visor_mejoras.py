@@ -45,14 +45,21 @@ def test_busqueda_vacia_conserva_ayuda_y_fecha_restaurable(app):
         assert entrada.get() == ''
         assert entrada._entry.get() == entrada.cget('placeholder_text')
     assert pantalla._fecha.get() == ''
-    assert pantalla._fecha._entrada._entry.get() == 'DD/MM/AA'
-    assert [w.cget('text') for w in pantalla._etiquetas_filtro] == [
-        'UUID', 'RFC', 'Serie', 'Folio', 'Fecha · DD/MM/AA', 'Monto']
+    assert pantalla._fecha._entrada._entry.get() == 'Desde · DD/MM/AA'
+    assert pantalla._fecha_hasta.get() == ''
+    assert pantalla._fecha_hasta._entrada._entry.get() == 'Hasta · DD/MM/AA'
+    assert pantalla._combo_busqueda.cget('values') == [
+        'UUID', 'RFC', 'Serie', 'Folio', 'Fecha', 'Monto']
+    pantalla._criterio_busqueda.set('Fecha')
+    pantalla._cambiar_criterio_busqueda('Fecha', programar=False)
     pantalla._fecha.set('07/10/26')
+    pantalla._fecha_hasta.set('09/10/26')
     app.guardar_sesion()
     app.recargar_datos_locales()
     nueva = app.master._conxml_app
     assert nueva._pantallas['admin40']._fecha.get() == '07/10/26'
+    assert nueva._pantallas['admin40']._fecha_hasta.get() == '09/10/26'
+    assert nueva._pantallas['admin40']._criterio_busqueda.get() == 'Fecha'
 
 
 def test_ampliar_conserva_filas_seleccion_y_restaura_al_salir(app):
@@ -140,6 +147,8 @@ def test_exportar_xml40_excluye_nomina_y_pagos(app, tmp_path):
 def test_busqueda_pagos_no_muestra_rep_que_no_coincide(app):
     app.navegar('pagos')
     p = app._pantallas['pagos']
+    p._criterio_busqueda.set('RFC')
+    p._cambiar_criterio_busqueda('RFC', programar=False)
     p._filtros['rfc'].insert(0, 'NO-EXISTE')
     for vista in ('conciliacion', 'facturas_p', 'pagos', 'doctos'):
         p._vista = vista
