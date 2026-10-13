@@ -16,6 +16,7 @@ class ResultadoImportacion:
     omitidos: int = 0
     errores: int = 0
     detalle_errores: list[str] = field(default_factory=list)
+    asociados: int = 0
 
 
 def importar_carpeta(
@@ -70,6 +71,8 @@ def importar_carpetas(
                 resultado.insertados += 1
             else:
                 resultado.omitidos += 1
+                if estado == "associated":
+                    resultado.asociados += 1
         except CFDIParseError as exc:
             resultado.errores += 1
             resultado.detalle_errores.append(str(exc))

@@ -318,17 +318,6 @@ class ConXmlApp(ctk.CTkFrame):
             text_color=th.SIDEBAR_TEXTO, font=(th.FUENTE, th.TAM_NOTA, "bold"),
         )
         self._lbl_version.pack(anchor="w", pady=(0, 10))
-        self._lbl_db_titulo = ctk.CTkLabel(
-            marco_bd, text="Carpeta de datos",
-            text_color=th.SIDEBAR_TEXTO, font=(th.FUENTE, th.TAM_NOTA),
-        )
-        self._lbl_db_titulo.pack(anchor="w")
-        ruta = str(self.db_path.parent)
-        self._lbl_db_ruta = ctk.CTkLabel(
-            marco_bd, text=ruta, text_color=th.SIDEBAR_TEXTO,
-            font=(th.FUENTE, th.TAM_NOTA), wraplength=200, justify="left",
-        )
-        self._lbl_db_ruta.pack(anchor="w", pady=(2, 0))
 
         # Área de contenido
         self._contenido = ctk.CTkFrame(self, fg_color=th.FONDO, corner_radius=0)
@@ -527,7 +516,7 @@ class ConXmlApp(ctk.CTkFrame):
                 with Catalogo(self.db_path) as catalogo:
                     cliente = catalogo.obtener_cliente(self.cliente_actual)
                 if cliente:
-                    texto = f"{cliente['nombre']}\n{cliente['clave']}"
+                    texto = cliente["nombre"]
             except Exception:
                 pass
         try:
@@ -683,11 +672,9 @@ class ConXmlApp(ctk.CTkFrame):
             if compacto:
                 self._lbl_subtitulo.pack_forget()
                 self._marco_cliente.pack_forget()
-                self._lbl_db_ruta.configure(wraplength=ancho - 32)
             else:
                 self._lbl_subtitulo.pack(anchor="w", padx=16, pady=(0, 20), before=self._zona_nav._parent_frame)
                 self._marco_cliente.pack(fill="x", padx=10, pady=(0, 14), before=self._zona_nav._parent_frame)
-                self._lbl_db_ruta.configure(wraplength=200)
         except Exception:
             pass
 

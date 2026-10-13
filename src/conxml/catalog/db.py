@@ -55,6 +55,13 @@ CREATE TABLE IF NOT EXISTS comprobantes (
     estatus_cancelacion TEXT
 );
 
+CREATE TABLE IF NOT EXISTS comprobantes_clientes (
+    uuid TEXT NOT NULL,
+    cliente TEXT NOT NULL,
+    PRIMARY KEY (uuid, cliente)
+);
+CREATE INDEX IF NOT EXISTS idx_comprobantes_clientes_cliente ON comprobantes_clientes(cliente);
+
 CREATE TABLE IF NOT EXISTS clientes (
     clave TEXT PRIMARY KEY,
     nombre TEXT NOT NULL,
@@ -214,6 +221,10 @@ class Catalogo:
             "WHERE TRIM(cliente) <> ''",
             (ahora, ahora),
         )
+        self.conn.execute(
+            "INSERT OR IGNORE INTO comprobantes_clientes (uuid, cliente) "
+            "SELECT uuid, cliente FROM comprobantes"
+        )
         self.conn.commit()
 
     def crear_cliente(self, clave: str, nombre: str, rfc: str = "") -> str:
@@ -357,7 +368,8 @@ class Catalogo:
     ) -> str:
         """Guarda un comprobante (y sus pagos). Dedupe por UUID.
 
-        Devuelve 'inserted' o 'skipped' si el UUID ya existía.
+        Devuelve 'inserted', 'associated' al vincular un XML existente a otro
+        cliente, o 'skipped' si ya estaba vinculado.
         """
         cliente = cliente.strip()
         self.asegurar_cliente(cliente)
@@ -407,11 +419,18 @@ class Catalogo:
                     None,
                 ),
             )
+            asociado = self.conn.execute(
+                "INSERT OR IGNORE INTO comprobantes_clientes (uuid, cliente) VALUES (?, ?)",
+                (comprobante.uuid, cliente),
+            ).rowcount
             if cur.rowcount == 0:
+                ruta_previa = self.conn.execute("SELECT ruta FROM comprobantes WHERE uuid = ?", (comprobante.uuid,)).fetchone()[0]
+                if not Path(ruta_previa).is_file():
+                    self.conn.execute("UPDATE comprobantes SET ruta = ? WHERE uuid = ?", (str(comprobante.ruta), comprobante.uuid))
                 self.actualizar_metadatos(comprobante.uuid, comprobante)
                 if comprobante.uuid and pagos:
                     self._completar_pagos_si_vacios(comprobante.uuid, pagos)
-                return "skipped"
+                return "associated" if asociado else "skipped"
             if comprobante.uuid and pagos:
                 self._insert_pagos(comprobante.uuid, pagos)
             self.conn.commit()
@@ -555,7 +574,7 @@ class Catalogo:
         where = " WHERE 1=1"
         params: list[Any] = []
         if cliente is not None:
-            where += " AND cliente = ?"
+            where += " AND EXISTS (SELECT 1 FROM comprobantes_clientes cc WHERE cc.uuid = comprobantes.uuid AND cc.cliente = ?)"
             params.append(cliente)
         if tipo is not None:
             where += " AND tipo_comprobante = ?"
@@ -598,8 +617,12 @@ class Catalogo:
             cliente, desde, hasta, tipo, sin_estatus, uuid, rfc, serie, folio, tipos
         )
         self.conn.row_factory = sqlite3.Row
+        columnas = "*"
+        if cliente is not None:
+            columnas = ", ".join("? AS cliente" if c == "cliente" else c for c in _COLUMNAS.split(", "))
+            params = [cliente, *params]
         return self.conn.execute(
-            "SELECT * FROM comprobantes" + where + " ORDER BY fecha", params
+            "SELECT " + columnas + " FROM comprobantes" + where + " ORDER BY fecha", params
         )
 
     def contar_consulta(
@@ -626,8 +649,9 @@ class Catalogo:
         sql = "SELECT p.*, c.cliente AS cliente FROM pagos p JOIN comprobantes c ON p.comprobante_uuid = c.uuid WHERE 1=1"
         params: list[Any] = []
         if cliente is not None:
-            sql += " AND c.cliente = ?"
-            params.append(cliente)
+            sql = sql.replace("c.cliente AS cliente", "? AS cliente")
+            sql += " AND EXISTS (SELECT 1 FROM comprobantes_clientes cc WHERE cc.uuid = c.uuid AND cc.cliente = ?)"
+            params.extend([cliente, cliente])
         sql += " ORDER BY p.fecha_pago"
         self.conn.row_factory = sqlite3.Row
         return self.conn.execute(sql, params)
@@ -669,6 +693,7 @@ class Catalogo:
         self.conn.executescript(
             "DELETE FROM doctos_relacionados; "
             "DELETE FROM pagos; "
+            "DELETE FROM comprobantes_clientes; "
             "DELETE FROM comprobantes; "
             "DELETE FROM errores; "
         )

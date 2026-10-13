@@ -25,6 +25,8 @@ class TablaVisor(tk.Frame):
         self._orden = []
         self._pagina = 0
         self._siguiente_id = 0
+        self._orden_columna = None
+        self._orden_desc = False
         self._pendiente = None
         self._acumulado_touchpad_x = 0
         self._acumulado_touchpad_y = 0
@@ -235,9 +237,11 @@ class TablaVisor(tk.Frame):
         opciones = {'width': self._anchos[column]}
         return opciones[option] if option else opciones
 
-    def insert(self, parent, index, *, values=(), tags=()):
+    def insert(self, parent, index, *, values=(), tags=(), iid=None):
         self._siguiente_id += 1
-        iid = str(self._siguiente_id)
+        iid = str(iid) if iid is not None else str(self._siguiente_id)
+        if iid in self._filas:
+            raise ValueError(f"Fila repetida: {iid}")
         self._filas[iid] = {'values': tuple(values), 'tags': tags}
         self._orden.append(iid)
         self._programar()
@@ -292,6 +296,13 @@ class TablaVisor(tk.Frame):
             return self.sheet.MT.bind(sequence, func, add='+')
         return super().bind(sequence, func, add)
 
+    def focus(self, item=None):
+        if item is not None:
+            self.see(item)
+            self.focus_set()
+        seleccion = self.selection()
+        return seleccion[0] if seleccion else ""
+
     def focus_set(self):
         self.sheet.MT.focus_set()
 
@@ -314,3 +325,15 @@ class TablaVisor(tk.Frame):
             comando = self._cabeceras[self._visibles[col]]['command']
             if comando:
                 comando()
+            else:
+                clave = self._visibles[col]
+                self._orden_desc = not self._orden_desc if clave == self._orden_columna else False
+                self._orden_columna = clave
+                indice = self._columnas.index(clave)
+                def valor(iid):
+                    dato = str(self._filas[iid]['values'][indice] or '')
+                    try:
+                        return (1, float(dato))
+                    except ValueError:
+                        return (0, dato.casefold())
+                self.ordenar(sorted(self._orden, key=valor, reverse=self._orden_desc))

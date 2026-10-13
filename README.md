@@ -279,3 +279,11 @@ Consulta [el inventario y registro de organización](docs/orden-carpetas.md) par
 - Las operaciones muestran su nombre y progreso en una barra visible al cambiar de pantalla. Al salir durante una tarea se puede elegir cerrar al terminar, conservando el respaldo habitual.
 - Los fallos al mostrar un resultado no detienen el procesamiento de las siguientes tareas.
 - La carga desde carpeta externa reconoce `.xml` y `.XML`, refresca los tres visores y limpia búsquedas anteriores. El resultado muestra insertados, duplicados y errores; los errores de importación también se presentan en un aviso.
+
+## Correcciones de carga y tablas en 0.2.31
+
+- Al importar un XML registrado para otro cliente, se vincula también al cliente activo sin duplicar el comprobante, sus pagos ni el estatus SAT. Las bases existentes conservan sus asociaciones originales.
+- Una carga sin comprobantes muestra un aviso y deja de presentarse como una carga correcta.
+- Clientes, Bóveda e historial de solicitudes SAT usan la misma tabla con paginación y copia de celdas que los visores.
+- El lateral muestra solo el nombre del cliente y la versión/actualización. Las rutas de almacenamiento se consultan en Configuración.
+- [Propuestas de automatización del SAT](docs/automatizaciones-sat.md).

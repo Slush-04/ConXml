@@ -167,3 +167,39 @@ def test_comprobante_sin_timbre_se_registra_como_error(catalogo, tmp_path):
     assert res.errores == 1
     assert res.insertados == 0
     assert "UUID" in res.detalle_errores[0]
+
+
+def test_xml_existente_se_vincula_a_otro_cliente_sin_duplicar(catalogo):
+    ingreso = FIXTURES / 'ingreso_iva.xml'
+    pago = FIXTURES / 'pago_rep_basico.xml'
+    for archivo in [ingreso, pago]:
+        importar_carpeta(catalogo, archivo, 'original')
+    factura = next(catalogo.consulta(cliente='original', tipo='I'))
+    catalogo.asignar_estatus(factura['uuid'], 'Vigente')
+    catalogo.commit()
+    for archivo in [ingreso, pago]:
+        res = importar_carpeta(catalogo, archivo, 'activo')
+        assert res.asociados == 1
+        assert res.insertados == 0 and res.errores == 0
+    assert catalogo.contar('comprobantes') == 2
+    assert catalogo.contar_consulta(cliente='original') == 2
+    assert catalogo.contar_consulta(cliente='activo') == 2
+    assert {f['cliente'] for f in catalogo.consulta(cliente='activo')} == {'activo'}
+    assert next(catalogo.consulta(cliente='activo', tipo='I'))['estatus'] == 'Vigente'
+    assert len(list(catalogo.consultar_pagos(cliente='activo'))) == 1
+    assert next(catalogo.consultar_pagos(cliente='activo'))['cliente'] == 'activo'
+    assert importar_carpeta(catalogo, ingreso, 'activo').asociados == 0
+
+
+def test_migracion_y_limpieza_conservan_asociaciones_correctas(tmp_path):
+    ruta = tmp_path / 'catalogo.db'
+    with Catalogo(ruta) as cat:
+        importar_carpeta(cat, FIXTURES / 'ingreso_iva.xml', 'antiguo')
+        cat.conn.execute('DROP TABLE comprobantes_clientes')
+        cat.conn.commit()
+    with Catalogo(ruta) as cat:
+        assert cat.contar_consulta(cliente='antiguo') == 1
+        cat.limpiar()
+        importar_carpeta(cat, FIXTURES / 'ingreso_iva.xml', 'nuevo')
+        assert cat.contar_consulta(cliente='antiguo') == 0
+        assert cat.contar_consulta(cliente='nuevo') == 1

@@ -19,6 +19,7 @@ from conxml.boveda import (
 from conxml.catalog.db import Catalogo
 from conxml.catalog.importer import importar_carpetas
 from conxml.config import Config
+from conxml.ui.tabla_visor import TablaVisor
 from conxml.ui import theme as th
 from conxml.ui.widgets import BotonPrimario, BotonSecundario, Encabezado, PanelCard, ResumenOperacion, BarraAdaptable, texto_adaptable
 
@@ -84,14 +85,10 @@ class PantallaBoveda(ctk.CTkFrame):
         BotonPrimario(cabecera, "Cargar selección", self._cargar_seleccion).pack(side="right")
         marco = ctk.CTkFrame(lista, fg_color="transparent")
         marco.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 16)); marco.rowconfigure(0, weight=1); marco.columnconfigure(0, weight=1)
-        self._tabla = ttk.Treeview(marco, columns=("direccion", "anio", "mes", "archivo"), show="headings")
+        self._tabla = TablaVisor(marco, columns=("direccion", "anio", "mes", "archivo"))
         for clave, titulo, ancho in (("direccion", "Tipo", 100), ("anio", "Año", 70), ("mes", "Mes", 70), ("archivo", "Archivo XML", 280)):
             self._tabla.heading(clave, text=titulo); self._tabla.column(clave, width=ancho, anchor="w")
         self._tabla.grid(row=0, column=0, sticky="nsew")
-        scroll = ttk.Scrollbar(marco, orient="vertical", command=self._tabla.yview); scroll.grid(row=0, column=1, sticky="ns"); self._tabla.configure(yscrollcommand=scroll.set)
-        scroll_x = ttk.Scrollbar(marco, orient="horizontal", command=self._tabla.xview)
-        scroll_x.grid(row=1, column=0, sticky="ew")
-        self._tabla.configure(xscrollcommand=scroll_x.set)
         self._vacio = ctk.CTkLabel(marco, text="Elige una carpeta o un periodo para ver sus XML.",
                                   text_color=th.TEXTO_SECUNDARIO, fg_color=th.FONDO_TARJETA)
         self._vacio.place(relx=.5, rely=.5, anchor="center")
@@ -285,7 +282,8 @@ class PantallaBoveda(ctk.CTkFrame):
             if visor:
                 visor._cliente_cargado = self.app.cliente_actual
                 visor._limpiar_filtros()
-        self._resumen.mostrar("Selección cargada", tono="rojo" if resultado.errores else "verde", detalle=f"Procesados: {resultado.procesados} | Insertados: {resultado.insertados} | Ya existentes: {resultado.omitidos} | Errores: {resultado.errores}. Abre XML 4.0, pagos o nómina para verlos.")
+        hay_visibles = resultado.procesados > resultado.errores and any(self.app._pantallas[c]._tabla.get_children() for c in ("admin40", "pagos", "nomina") if c in self.app._pantallas)
+        self._resumen.mostrar("Selección cargada" if hay_visibles else "No se cargaron comprobantes visibles", tono="rojo" if resultado.errores else "verde", detalle=f"Procesados: {resultado.procesados} | Insertados: {resultado.insertados} | Ya existentes: {resultado.omitidos} | Vinculados al cliente: {resultado.asociados} | Errores: {resultado.errores}. Abre XML 4.0, pagos o nómina para verlos.")
 
         if resultado.detalle_errores:
             for detalle in resultado.detalle_errores[:10]:
@@ -296,3 +294,6 @@ class PantallaBoveda(ctk.CTkFrame):
                 + "\n".join(resultado.detalle_errores[:3]),
                 parent=self,
             )
+
+        elif not hay_visibles:
+            messagebox.showwarning("Carga sin comprobantes", "La selección no produjo comprobantes para este cliente. Verifica que los archivos sean CFDI 4.0 timbrados; la lista de nombres no confirma que se hayan importado.", parent=self)

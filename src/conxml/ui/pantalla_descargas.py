@@ -19,6 +19,7 @@ from conxml.sat.descarga_masiva import (
 )
 from conxml.sat.seguimiento import ResultadoSeguimiento, procesar_solicitud
 from conxml.ui import responsive as resp
+from conxml.ui.tabla_visor import TablaVisor
 from conxml.ui import theme as th
 from conxml.ui.selector_fecha import SelectorFecha
 from conxml.ui.scroll import PaginaDesplazable
@@ -137,10 +138,7 @@ class PantallaDescargas(ctk.CTkFrame):
         marco = ctk.CTkFrame(historial, fg_color="transparent")
         marco.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 16))
         marco.rowconfigure(0, weight=1); marco.columnconfigure(0, weight=1)
-        self._tabla = ttk.Treeview(
-            marco, columns=("id", "direccion", "periodo", "estado", "cfdis", "mensaje"),
-            show="headings", selectmode="browse", height=12, style="Solicitudes.Treeview",
-        )
+        self._tabla = TablaVisor(marco, columns=("id", "direccion", "periodo", "estado", "cfdis", "mensaje"))
         for col, titulo, ancho in (
             ("id", "Solicitud SAT", 165), ("direccion", "Tipo", 76),
             ("periodo", "Periodo", 132), ("estado", "Estado", 90),
@@ -152,11 +150,6 @@ class PantallaDescargas(ctk.CTkFrame):
                 anchor="w", stretch=(col == "mensaje"),
             )
         self._tabla.grid(row=0, column=0, sticky="nsew")
-        scroll = ttk.Scrollbar(marco, orient="vertical", command=self._tabla.yview)
-        scroll.grid(row=0, column=1, sticky="ns"); self._tabla.configure(yscrollcommand=scroll.set)
-        scroll_x = ttk.Scrollbar(marco, orient="horizontal", command=self._tabla.xview)
-        scroll_x.grid(row=1, column=0, sticky="ew")
-        self._tabla.configure(xscrollcommand=scroll_x.set)
         texto_adaptable(self._cliente_lbl, self._contenedor)
         texto_adaptable(self._destino_lbl, self._contenedor)
         self.botones = [self._btn_solicitar, self._btn_verificar, self._btn_seguimiento]

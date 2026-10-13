@@ -40,9 +40,10 @@ def esperar(app, condicion):
 
 
 def test_actualizacion_visible_con_menu_expandido_y_ruta_larga(app):
-    app._lbl_db_ruta.configure(text='C:/Usuarios/Nombre muy largo/AppData/Local/ConXml/data')
     app.master.update()
     boton = app.actualizaciones.button
+    assert not hasattr(app, "_lbl_db_ruta")
+    assert app._lbl_cliente.cget("text") == "Cliente prueba"
     assert boton.winfo_viewable()
     assert boton.winfo_rooty() + boton.winfo_height() <= app.master.winfo_rooty() + app.master.winfo_height()
     assert boton.winfo_rooty() < app._lbl_version.winfo_rooty()
@@ -130,3 +131,31 @@ def test_error_importacion_se_muestra_sin_ocultar_xml_validos(app, tmp_path, mon
     assert resultado.insertados == 1 and resultado.errores == 1
     assert 'incorrecto.xml' in avisos[0]
     assert app._pantallas['admin40']._tabla.get_children()
+
+
+def test_carga_externa_de_xml_previamente_importados_en_otro_cliente(app, tmp_path):
+    with Catalogo(app.db_path) as cat:
+        from conxml.catalog.importer import importar_carpeta as importar
+        importar(cat, Path(__file__).parent / 'fixtures', 'Otro')
+    boveda = app._pantallas['boveda']
+    resultado = boveda._run_carga([Path(__file__).parent / 'fixtures'], False, 'C1')
+    assert resultado.asociados > 0
+    boveda._presentar_carga(resultado)
+    for clave in ['admin40', 'pagos', 'nomina']:
+        app.navegar(clave)
+        app.master.update()
+        assert app._pantallas[clave]._tabla.get_children(), clave
+
+
+def test_todas_las_tablas_comparten_diseno_y_historial_conserva_solicitud(app):
+    from conxml.ui.tabla_visor import TablaVisor
+    for clave in ['clientes', 'boveda', 'descargas', 'admin40', 'pagos', 'nomina']:
+        assert isinstance(app._pantallas[clave]._tabla, TablaVisor), clave
+    pantalla = app._pantallas['descargas']
+    fila = dict(id_sat='SOL-1', fecha_inicial='2026-10-01', fecha_final='2026-10-13',
+                estado=1, direccion='Recibidos', numero_cfdis=2, mensaje='', cod_estatus='5000')
+    pantalla._renderizar_historial([fila])
+    pantalla._tabla.selection_set('SOL-1')
+    pantalla._renderizar_historial([fila])
+    assert pantalla._tabla.selection() == ('SOL-1',)
+    assert pantalla._tabla.item('SOL-1', 'values')[0] == 'SOL-1'
