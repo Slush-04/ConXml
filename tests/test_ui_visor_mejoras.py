@@ -103,7 +103,7 @@ def test_doble_clic_abre_pdf_de_la_fila_y_no_del_encabezado(app, monkeypatch):
     p._doble_clic_pdf(SimpleNamespace(x=x + 10, y=y + alto // 2))
     assert len(abiertas) == 1
     assert abiertas[0]['uuid'] in p._uuids_visibles(seleccion=True)
-    p._doble_clic_pdf(SimpleNamespace(x=10, y=2))
+    p._doble_clic_pdf(SimpleNamespace(x=10, y=2, widget=p._tabla.sheet.CH))
     assert len(abiertas) == 1
     assert all(b.cget('text') not in ('Vista previa PDF', 'Guardar PDF') for b in p.botones)
 

@@ -97,11 +97,14 @@ class PantallaClientes(ctk.CTkFrame):
         )
         for clave, titulo, ancho in (("clave", "Clave", 150), ("nombre", "Nombre", 280), ("rfc", "RFC", 150)):
             self._tabla.heading(clave, text=titulo)
-            self._tabla.column(clave, width=ancho, anchor="w")
+            self._tabla.column(clave, width=ancho, minwidth=ancho, anchor="w")
         self._tabla.grid(row=0, column=0, sticky="nsew")
         scroll = ttk.Scrollbar(marco_tabla, orient="vertical", command=self._tabla.yview)
         scroll.grid(row=0, column=1, sticky="ns")
         self._tabla.configure(yscrollcommand=scroll.set)
+        scroll_x = ttk.Scrollbar(marco_tabla, orient="horizontal", command=self._tabla.xview)
+        scroll_x.grid(row=1, column=0, sticky="ew")
+        self._tabla.configure(xscrollcommand=scroll_x.set)
         self._tabla.bind("<Double-1>", lambda _event: self._entrar())
         self._vacio = ctk.CTkLabel(marco_tabla, text="Aún no hay clientes. Registra el primero arriba.",
                                    text_color=th.TEXTO_SECUNDARIO, fg_color=th.FONDO_TARJETA)

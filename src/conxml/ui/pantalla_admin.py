@@ -31,6 +31,7 @@ from conxml import estado_local
 from conxml.archivos import abrir_local
 from conxml.export.pdf import generar_pdf, exportar_lote, nombre_pdf
 from conxml.ui.visor_pdf import abrir_vista_previa
+from conxml.ui.tabla_visor import TablaVisor
 from conxml.export.listado import (
     COMPLEMENTOS_IGNORADOS,
     _base_por_factor,
@@ -65,33 +66,33 @@ MODO_NOMINA = "nomina"
 TIPOS_POR_MODO = {MODO_CFDI40: ("I", "E", "T"), MODO_PAGOS: ("P",), MODO_NOMINA: ("N",)}
 
 _COLUMNAS_CFDI40 = [
-    ("verificado", "Verificado o Asoc", 110),
+    ("verificado", "Verificado / asociado", 110),
     ("estatus", "Estado SAT", 100),
-    ("es_cancelable", "EsCancelable", 110),
-    ("estatus_cancelacion", "EstatusCancelacion", 140),
-    ("relaciones", "CfdiRelacionados", 160),
+    ("es_cancelable", "Cancelable", 110),
+    ("estatus_cancelacion", "Estado de cancelación", 140),
+    ("relaciones", "CFDI relacionados", 160),
     ("uuid", "UUID", 240),
     ("serie", "Serie", 60),
     ("folio", "Folio", 70),
-    ("version", "Version", 60),
-    ("tipo", "TipoComprobante", 110),
-    ("fecha_timbrado", "FechaTimbradoXML", 140),
-    ("fecha", "FechaEmisionXML", 140),
-    ("lugar_expedicion", "LugarDeExpedicion", 110),
+    ("version", "Versión", 60),
+    ("tipo", "Tipo de comprobante", 110),
+    ("fecha_timbrado", "Fecha de timbrado", 140),
+    ("fecha", "Fecha de emisión", 140),
+    ("lugar_expedicion", "Lugar de expedición", 110),
     ("emisor_rfc", "RFC Emisor", 110),
     ("emisor", "Nombre Emisor", 180),
-    ("emisor_regimen", "RegimenFiscal", 140),
+    ("emisor_regimen", "Régimen fiscal", 140),
     ("receptor_rfc", "RFC Receptor", 110),
     ("receptor", "Nombre Receptor", 180),
-    ("uso_cfdi", "UsoCFDI", 160),
-    ("regimen_fiscal_receptor", "RegimenFiscalReceptor", 160),
-    ("domicilio_fiscal_receptor", "DomicilioFiscalReceptor", 140),
-    ("forma_pago", "FormaDePago", 140),
-    ("metodo_pago", "Metodo de Pago", 120),
+    ("uso_cfdi", "Uso de CFDI", 160),
+    ("regimen_fiscal_receptor", "Régimen del receptor", 160),
+    ("domicilio_fiscal_receptor", "Domicilio fiscal del receptor", 140),
+    ("forma_pago", "Forma de pago", 140),
+    ("metodo_pago", "Método de pago", 120),
     ("complementos", "Complementos comprobante", 160),
     ("conceptos", "Conceptos", 220),
     ("complementos_conceptos", "Complementos conceptos", 140),
-    ("subtotal", "SubTotal", 90),
+    ("subtotal", "Subtotal", 90),
     ("descuento", "Descuento", 90),
     ("total_traslados", "Total Trasladados", 100),
     ("total_retenciones", "Total Retenidos", 100),
@@ -144,10 +145,10 @@ _COLUMNAS_PAGOS_CONCILIACION = [
     ("fecha_timbrado_rep", "FechaTimbrado REP", 130),
     ("tipo_comprobante_rep", "TipoComprobante REP", 110),
     ("ruta_rep", "Archivo XML REP", 180),
-    ("es_cancelable", "EsCancelable", 110),
-    ("estatus_cancelacion", "EstatusCancelacion", 140),
-    ("fecha_timbrado", "FechaTimbradoXML", 130),
-    ("tipo_comprobante", "TipoComprobante", 110),
+    ("es_cancelable", "Cancelable", 110),
+    ("estatus_cancelacion", "Estado de cancelación", 140),
+    ("fecha_timbrado", "Fecha de timbrado", 130),
+    ("tipo_comprobante", "Tipo de comprobante", 110),
     ("total_factura", "Total Factura", 95),
     ("ruta", "Archivo XML", 180),
 ]
@@ -155,31 +156,31 @@ _COLUMNAS_PAGOS_CONCILIACION = [
 _COLUMNAS_NOMINA = [
     ("cliente", "Cliente", 120),
     ("estatus", "Estado SAT", 100),
-    ("es_cancelable", "EsCancelable", 110),
-    ("estatus_cancelacion", "EstatusCancelacion", 140),
+    ("es_cancelable", "Cancelable", 110),
+    ("estatus_cancelacion", "Estado de cancelación", 140),
     ("uuid", "UUID", 240),
     ("serie", "Serie", 60),
     ("folio", "Folio", 70),
-    ("fecha_timbrado", "FechaTimbradoXML", 130),
-    ("fecha", "FechaEmisionXML", 130),
+    ("fecha_timbrado", "Fecha de timbrado", 130),
+    ("fecha", "Fecha de emisión", 130),
     ("emisor_rfc", "RFC Emisor", 110),
     ("emisor_nombre", "Nombre Emisor", 180),
     ("registro_patronal", "Registro Patronal", 120),
     ("receptor_rfc", "RFC Receptor", 110),
     ("receptor_nombre", "Nombre Receptor", 180),
     ("curp", "CURP", 140),
-    ("num_empleado", "Num Empleado", 90),
+    ("num_empleado", "Núm. de empleado", 90),
     ("puesto", "Puesto", 140),
     ("tipo_nomina", "Tipo Nomina", 90),
     ("fecha_pago", "Fecha Pago", 110),
     ("fecha_inicial_pago", "Fecha Inicial Pago", 110),
     ("fecha_final_pago", "Fecha Final Pago", 110),
-    ("num_dias_pagados", "Num Dias Pagados", 90),
+    ("num_dias_pagados", "Días pagados", 90),
     ("periodicidad_pago", "Periodicidad Pago", 110),
     ("total_percepciones", "Total Percepciones", 100),
     ("total_deducciones", "Total Deducciones", 100),
     ("total_otros_pagos", "Total Otros Pagos", 100),
-    ("subtotal", "SubTotal", 90),
+    ("subtotal", "Subtotal", 90),
     ("descuento", "Descuento", 90),
     ("total", "Total", 90),
     ("moneda", "Moneda", 60),
@@ -199,13 +200,13 @@ VISTAS_PAGOS = [
 _COLUMNAS_FACTURAS_PPD = [
     ("cliente", "Cliente", 120),
     ("estatus", "Estado SAT", 100),
-    ("es_cancelable", "EsCancelable", 110),
-    ("estatus_cancelacion", "EstatusCancelacion", 140),
+    ("es_cancelable", "Cancelable", 110),
+    ("estatus_cancelacion", "Estado de cancelación", 140),
     ("uuid", "UUID", 240),
     ("serie", "Serie", 60),
     ("folio", "Folio", 70),
-    ("fecha", "FechaEmisionXML", 140),
-    ("fecha_timbrado", "FechaTimbradoXML", 140),
+    ("fecha", "Fecha de emisión", 140),
+    ("fecha_timbrado", "Fecha de timbrado", 140),
     ("emisor_rfc", "RFC Emisor", 110),
     ("emisor_nombre", "Nombre Emisor", 180),
     ("receptor_rfc", "RFC Receptor", 110),
@@ -221,13 +222,13 @@ _COLUMNAS_FACTURAS_PPD = [
 _COLUMNAS_FACTURAS_P = [
     ("cliente", "Cliente", 120),
     ("estatus", "Estado SAT", 100),
-    ("es_cancelable", "EsCancelable", 110),
-    ("estatus_cancelacion", "EstatusCancelacion", 140),
+    ("es_cancelable", "Cancelable", 110),
+    ("estatus_cancelacion", "Estado de cancelación", 140),
     ("uuid", "UUID", 240),
     ("serie", "Serie", 60),
     ("folio", "Folio", 70),
-    ("fecha", "FechaEmisionXML", 140),
-    ("fecha_timbrado", "FechaTimbradoXML", 140),
+    ("fecha", "Fecha de emisión", 140),
+    ("fecha_timbrado", "Fecha de timbrado", 140),
     ("emisor_rfc", "RFC Emisor", 110),
     ("emisor_nombre", "Nombre Emisor", 180),
     ("receptor_rfc", "RFC Receptor", 110),
@@ -271,7 +272,7 @@ _COLUMNAS_DOCTOS = [
     ("uuid_doc", "UUID", 240),
     ("rfc_emisor", "RFC Emisor", 110),
     ("nombre_emisor", "Nombre Emisor", 180),
-    ("regimen_fiscal", "RegimenFiscal", 140),
+    ("regimen_fiscal", "Régimen fiscal", 140),
     ("fecha_pago", "Fecha Pago", 130),
     ("forma_pago", "Forma Pago", 130),
     ("monto", "Monto Pago", 90),
@@ -771,44 +772,59 @@ class PantallaAdministracion(ctk.CTkFrame):
         barra_tabla.columnconfigure(1, weight=1)
         self._filtros = {}
         self._filtro_after = None
+        self._criterio_busqueda = tk.StringVar(value="UUID")
         ctk.CTkLabel(
             barra_tabla, text="Buscar por", text_color=th.TEXTO,
             font=(th.FUENTE, th.TAM_BODY, "bold"), anchor="w",
         ).grid(row=0, column=0, padx=(14, 10), pady=(6, 0), sticky="w")
-
+        self._combo_busqueda = ctk.CTkComboBox(
+            barra_tabla, variable=self._criterio_busqueda,
+            values=["UUID", "RFC", "Serie", "Folio", "Fecha", "Monto"],
+            command=self._cambiar_criterio_busqueda, width=170, height=30,
+        )
+        self._combo_busqueda.grid(row=0, column=1, padx=(0, 8), pady=(6, 0), sticky="w")
         campos = ctk.CTkFrame(barra_tabla, fg_color="transparent")
         self._campos_busqueda = campos
         campos.grid(row=1, column=0, columnspan=3, sticky="ew", padx=12, pady=(0, 8))
-        for columna in range(6):
-            campos.columnconfigure(columna, weight=1)
-
-        self._etiquetas_filtro = []
-        for i, texto in enumerate(("UUID", "RFC", "Serie", "Folio", "Fecha · DD/MM/AA", "Monto")):
-            etiqueta = ctk.CTkLabel(campos, text=texto, anchor="w",
-                                    font=(th.FUENTE, th.TAM_NOTA), text_color=th.TEXTO_SECUNDARIO)
-            etiqueta.grid(row=0, column=i, sticky="w", padx=(0, 6))
-            self._etiquetas_filtro.append(etiqueta)
+        campos.columnconfigure(0, weight=1)
 
         definicion_filtros = (
-            ("uuid", "UUID", 110, 0),
-            ("rfc", "RFC", 95, 1),
-            ("serie", "Serie", 60, 2),
-            ("folio", "Folio", 60, 3),
+            ("uuid", "UUID", 180),
+            ("rfc", "RFC", 180),
+            ("serie", "Serie", 150),
+            ("folio", "Folio", 150),
         )
-        for clave, texto, ancho, columna in definicion_filtros:
+        self._campos_por_criterio = {}
+        for clave, texto, ancho in definicion_filtros:
             entrada = ctk.CTkEntry(campos, width=ancho, placeholder_text=texto)
-            entrada.grid(row=1, column=columna, padx=(0, 6), pady=(0, 4), sticky="ew")
+            entrada.grid(row=0, column=0, sticky="ew")
             entrada.bind("<KeyRelease>", lambda _event: self._programar_carga_filtrada())
             entrada.bind("<Return>", lambda _event: self._cargar_tabla())
             self._filtros[clave] = entrada
+            criterio = {"uuid": "UUID", "rfc": "RFC", "serie": "Serie", "folio": "Folio"}[clave]
+            self._campos_por_criterio[criterio] = entrada
 
-        self._fecha = SelectorFecha(campos, self._programar_carga_filtrada)
-        self._fecha.grid(row=1, column=4, padx=(0, 6), sticky="ew")
-        self._monto = ctk.CTkEntry(campos, width=105, placeholder_text="Monto")
-        self._monto.grid(row=1, column=5, padx=(0, 0), sticky="ew")
+        self._campo_rango_fecha = ctk.CTkFrame(campos, fg_color="transparent")
+        self._campo_rango_fecha.columnconfigure(0, weight=1, uniform="rango_fecha")
+        self._campo_rango_fecha.columnconfigure(1, weight=0)
+        self._fecha = SelectorFecha(self._campo_rango_fecha, self._programar_carga_filtrada)
+        self._fecha._entrada.configure(placeholder_text="Desde · DD/MM/AA")
+        self._fecha.grid(row=0, column=0, padx=(0, 8), sticky="ew")
+        ctk.CTkLabel(
+            self._campo_rango_fecha, text="a", text_color=th.TEXTO_SECUNDARIO,
+            font=(th.FUENTE, th.TAM_NOTA),
+        ).grid(row=0, column=1, padx=(0, 8))
+        self._fecha_hasta = SelectorFecha(self._campo_rango_fecha, self._programar_carga_filtrada)
+        self._fecha_hasta._entrada.configure(placeholder_text="Hasta · DD/MM/AA")
+        self._fecha_hasta.grid(row=0, column=2, sticky="ew")
+        self._campo_rango_fecha.columnconfigure(2, weight=1, uniform="rango_fecha")
+        self._monto = ctk.CTkEntry(campos, width=150, placeholder_text="Monto")
+        self._monto.grid(row=0, column=0, sticky="ew")
         self._monto.bind("<KeyRelease>", lambda _event: self._programar_carga_filtrada())
         self._monto.bind("<Return>", lambda _event: self._cargar_tabla())
-        tk.Misc.bind(campos, "<Configure>", self._acomodar_filtros, add="+")
+        self._campos_por_criterio["Fecha"] = self._campo_rango_fecha
+        self._campos_por_criterio["Monto"] = self._monto
+        self._cambiar_criterio_busqueda("UUID", programar=False)
 
         self._lbl_resultados = ctk.CTkLabel(
             barra_tabla, text="0 registros", text_color=th.TEXTO_SECUNDARIO,
@@ -871,31 +887,17 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._marco_tabla = marco_tabla
 
         cols_ini = self._columnas_actuales()
-        self._tabla = ttk.Treeview(
-            marco_tabla,
-            columns=[c[0] for c in cols_ini],
-            displaycolumns="#all",
-            show="headings",
-            style="Tabla.Treeview",
-            selectmode="extended",
-        )
+        self._tabla = TablaVisor(marco_tabla, columns=[c[0] for c in cols_ini])
         self._configurar_columnas(cols_ini)
-        aplicar_estilo_tabla(self._tabla)
         self._gestor().aplicar()
-
-        scroll_y = ttk.Scrollbar(marco_tabla, orient="vertical", command=self._tabla.yview)
-        scroll_x = ttk.Scrollbar(
-            marco_tabla, orient="horizontal", command=self._tabla.xview
-        )
-        self._tabla.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
         self._tabla.grid(row=0, column=0, sticky="nsew")
         self._tabla.bind('<Double-1>', self._doble_clic_pdf)
-        self._tabla.bind('<Button-3>', self._menu_pdf)
-        self._tabla.bind('<Button-2>', self._menu_pdf)
-        scroll_y.grid(row=0, column=1, sticky="ns")
-        scroll_x.grid(row=1, column=0, sticky="ew")
-        self._scroll_y = scroll_y
-        self._scroll_x = scroll_x
+        self._tabla.sheet.popup_menu_add_command('Abrir PDF', self._vista_previa_pdf,
+                                                 header_menu=False, index_menu=False, empty_space_menu=False)
+        self._tabla.sheet.popup_menu_add_command('PDF de selección (ZIP)', self._pdf_seleccion,
+                                                 header_menu=False, index_menu=False, empty_space_menu=False)
+        self._scroll_y = self._tabla.sheet.yscroll
+        self._scroll_x = self._tabla.sheet.xscroll
 
         # Fila de acciones inferiores
         marco_acciones = BarraAdaptable(contenedor)
@@ -944,7 +946,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             barra_pdf.agregar(boton)
             self.botones.append(boton)
         barra_pdf.agregar(ctk.CTkLabel(
-            barra_pdf, text="Doble clic en una fila para abrir su PDF",
+            barra_pdf, text="Ctrl+C / ⌘C: copiar · Doble clic: PDF o ordenar cabecera", wraplength=320,
             font=(th.FUENTE, th.TAM_NOTA), text_color=th.TEXTO_SECUNDARIO))
         self._barra_pdf = barra_pdf
 
@@ -981,39 +983,46 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._detalles_usados = False
         self._aplicar_detalles(self.app.detalles_visibles)
         sesion = estado_local.cargar().get('sesion', {}).get('pantallas', {}).get(self.modo, {})
-        for clave, valor in sesion.get('filtros', {}).items():
+        filtros_sesion = sesion.get("filtros", {})
+        criterio = sesion.get("buscar_por")
+        if criterio not in self._campos_por_criterio:
+            criterio = next((
+                nombre for nombre, clave in (
+                    ("UUID", "uuid"), ("RFC", "rfc"), ("Serie", "serie"),
+                    ("Folio", "folio"), ("Fecha", "fecha"), ("Monto", "monto"),
+                ) if filtros_sesion.get(clave)
+            ), "UUID")
+        self._criterio_busqueda.set(criterio)
+        for clave, valor in filtros_sesion.items():
             if clave in self._filtros and isinstance(valor, str) and valor:
                 self._filtros[clave].insert(0, valor)
         campos_sesion = {
             "fecha": self._fecha,
+            "fecha_hasta": self._fecha_hasta,
             "monto": self._monto,
         }
         for clave, entrada in campos_sesion.items():
-            valor = sesion.get("filtros", {}).get(clave, "")
+            valor = filtros_sesion.get(clave, "")
             if isinstance(valor, str) and valor:
-                if clave == "fecha":
+                if clave in {"fecha", "fecha_hasta"}:
                     entrada.set(valor)
                 else:
                     entrada.insert(0, valor)
+        self._cambiar_criterio_busqueda(criterio, programar=False)
         self._carpeta.set(sesion.get('carpeta', ''))
         vista = sesion.get('vista')
         if self.modo == MODO_PAGOS and vista in dict(VISTAS_PAGOS):
             self._cambiar_vista(dict(VISTAS_PAGOS)[vista])
 
-    def _acomodar_filtros(self, event):
-        if event.widget is not self._campos_busqueda:
-            return
-        ancho = event.width / resp.escalado_widget(self)
-        columnas = 6 if ancho >= 640 else 3
-        if getattr(self, "_columnas_filtro", None) == columnas:
-            return
-        self._columnas_filtro = columnas
-        for col in range(6):
-            self._campos_busqueda.columnconfigure(col, weight=1 if col < columnas else 0)
-        for i, campo in enumerate([*self._filtros.values(), self._fecha, self._monto]):
-            self._etiquetas_filtro[i].grid_configure(row=2 * (i // columnas), column=i % columnas)
-            campo.grid_configure(row=2 * (i // columnas) + 1, column=i % columnas, pady=3,
-                                 padx=(0, 6 if i % columnas < columnas - 1 else 0))
+    def _cambiar_criterio_busqueda(self, criterio: str, *, programar: bool = True) -> None:
+        if criterio not in self._campos_por_criterio:
+            criterio = "UUID"
+        for campo in self._campos_por_criterio.values():
+            campo.grid_remove()
+        self._campos_por_criterio[criterio].grid(row=0, column=0, sticky="ew")
+        self._criterio_busqueda.set(criterio)
+        if programar:
+            self._programar_carga_filtrada()
 
     def al_alternar_detalles(self, visible: bool) -> None:
         self._aplicar_detalles(visible)
@@ -1283,28 +1292,47 @@ class PantallaAdministracion(ctk.CTkFrame):
             clave: "" if valor is None else str(valor)
             for clave, valor in zip(columnas, valores)
         }
-        for clave, entrada in self._filtros.items():
+        criterio = self._criterio_busqueda.get()
+        if criterio in {"UUID", "RFC", "Serie", "Folio"}:
+            clave = criterio.lower()
+            entrada = self._filtros[clave]
             filtro = entrada.get().strip().casefold()
             if clave not in por_clave:
                 # RFC es un filtro SQL sobre emisor/receptor y no una columna
                 # visible única; UUID/serie/folio sí suelen estar presentes.
-                continue
+                return True
             if filtro and filtro not in por_clave.get(clave, "").casefold():
                 return False
 
-        fecha_filtro = SelectorFecha._parsear(self._fecha.get())
-        if self._fecha.get().strip() and fecha_filtro:
-            fechas = [
-                SelectorFecha._parsear(por_clave.get(clave, "")[:10])
-                for clave in ("fecha", "fecha_rep", "fecha_emision", "fecha_pago", "fecha_timbrado")
-                if por_clave.get(clave, "")
-            ]
-            fecha = next((valor for valor in fechas if valor), None)
-            if fecha != fecha_filtro:
+        if criterio == "Fecha":
+            fecha_inicio = SelectorFecha._parsear(self._fecha.get())
+            fecha_fin = SelectorFecha._parsear(self._fecha_hasta.get())
+            if self._fecha.get().strip() and fecha_inicio is None:
                 return False
+            if self._fecha_hasta.get().strip() and fecha_fin is None:
+                return False
+            if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
+                return False
+            if fecha_inicio or fecha_fin:
+                fechas = [
+                    SelectorFecha._parsear(por_clave.get(clave, "")[:10])
+                    for clave in ("fecha", "fecha_rep", "fecha_emision", "fecha_pago", "fecha_timbrado")
+                    if por_clave.get(clave, "")
+                ]
+                fecha = next((valor for valor in fechas if valor), None)
+                if fecha is None:
+                    return False
+                if fecha_inicio and fecha < fecha_inicio:
+                    return False
+                if fecha_fin and fecha > fecha_fin:
+                    return False
 
-        monto_filtro = self._numero_filtro(self._monto.get())
-        if monto_filtro is not None:
+        if criterio == "Monto":
+            monto_filtro = self._numero_filtro(self._monto.get())
+            if self._monto.get().strip() and monto_filtro is None:
+                return False
+            if monto_filtro is None:
+                return True
             montos = (
                 "total", "total_factura", "monto", "monto_pagos", "pagado",
                 "saldo_pendiente", "saldo_insoluto",
@@ -1362,8 +1390,7 @@ class PantallaAdministracion(ctk.CTkFrame):
             except ValueError:
                 return (0 if texto else -1, texto.casefold())
 
-        for item in sorted(items, key=clave_orden, reverse=self._orden_desc):
-            self._tabla.move(item, "", "end")
+        self._tabla.ordenar(sorted(items, key=clave_orden, reverse=self._orden_desc))
 
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
@@ -1372,12 +1399,21 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._cargar_tabla()
 
     def _filtro_kwargs(self) -> dict[str, str]:
-        filtros = {
-            clave: entrada.get().strip()
-            for clave, entrada in self._filtros.items()
-            if clave in {"uuid", "rfc", "serie", "folio"} and entrada.get().strip()
-        }
-        return filtros
+        clave = {"UUID": "uuid", "RFC": "rfc", "Serie": "serie", "Folio": "folio"}.get(
+            self._criterio_busqueda.get()
+        )
+        if clave is None:
+            return {}
+        valor = self._filtros[clave].get().strip()
+        return {clave: valor} if valor else {}
+
+    def _hay_busqueda_activa(self) -> bool:
+        criterio = self._criterio_busqueda.get()
+        if criterio == "Fecha":
+            return bool(self._fecha.get().strip() or self._fecha_hasta.get().strip())
+        if criterio == "Monto":
+            return bool(self._monto.get().strip())
+        return bool(self._filtro_kwargs())
 
     def _consulta(self, catalogo: Catalogo, **kwargs):
         """Consulta siempre el cliente activo y aplica los filtros visibles."""
@@ -1392,7 +1428,7 @@ class PantallaAdministracion(ctk.CTkFrame):
     def _limpiar_filtros(self) -> None:
         for entrada in self._filtros.values():
             entrada.delete(0, "end")
-        for entrada in (self._fecha, self._monto):
+        for entrada in (self._fecha, self._fecha_hasta, self._monto):
             entrada.delete(0, "end")
         self._cargar_tabla()
 
@@ -1567,6 +1603,8 @@ class PantallaAdministracion(ctk.CTkFrame):
             messagebox.showerror("No se pudo abrir la carpeta", str(exc), parent=self)
 
     def _doble_clic_pdf(self, event) -> None:
+        if getattr(event, "widget", None) is self._tabla.sheet.CH:
+            return
         if self._tabla.identify_region(event.x, event.y) not in ("cell", "tree"):
             return
         item = self._tabla.identify_row(event.y)
@@ -1581,6 +1619,7 @@ class PantallaAdministracion(ctk.CTkFrame):
         if item not in self._tabla.selection():
             self._tabla.selection_set(item)
         menu = tk.Menu(self, tearoff=False)
+        menu.add_command(label='Copiar celdas', command=self._tabla.sheet.copy)
         menu.add_command(label='Abrir PDF', command=self._vista_previa_pdf)
         menu.add_command(label='PDF de selección (ZIP)', command=self._pdf_seleccion)
         menu.tk_popup(event.x_root, event.y_root)
@@ -1664,15 +1703,20 @@ class PantallaAdministracion(ctk.CTkFrame):
         filtros = {k: v.get() for k, v in self._filtros.items()}
         filtros.update({
             "fecha": self._fecha.get(),
+            "fecha_hasta": self._fecha_hasta.get(),
             "monto": self._monto.get(),
         })
-        return {'filtros': filtros, 'carpeta': self._carpeta.get(), 'vista': self._vista}
+        return {
+            'filtros': filtros,
+            'buscar_por': self._criterio_busqueda.get(),
+            'carpeta': self._carpeta.get(),
+            'vista': self._vista,
+        }
 
     # ── Tabla ─────────────────────────────────────────────────────────────────
 
     def _cargar_tabla(self) -> None:
-        for item in self._tabla.get_children():
-            self._tabla.delete(item)
+        self._tabla.delete(*self._tabla.get_children())
         with Catalogo(self.app.db_path) as catalogo:
             if self.modo == MODO_PAGOS:
                 self._totales_panel.actualizar(catalogo, self._cliente_cargado)
@@ -1696,11 +1740,7 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._ordenar_filas()
         try:
             total = len(self._tabla.get_children())
-            activos = len(self._filtro_kwargs())
-            activos += sum(
-                bool(entrada.get().strip())
-                for entrada in (self._fecha, self._monto)
-            )
+            activos = int(self._hay_busqueda_activa())
             self._lbl_resultados.configure(
                 text=f"{total:,} registros" + (f" · {activos} filtros" if activos else "")
             )

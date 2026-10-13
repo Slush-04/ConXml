@@ -16,6 +16,7 @@ from conxml.ui.widgets import (
     Metrica,
     TarjetaAccion,
     texto_adaptable,
+    BarraAdaptable,
 )
 
 ACCIONES = [
@@ -139,12 +140,12 @@ class PantallaResumen(ctk.CTkFrame):
                     tarjeta.grid(row=i // columnas, column=i % columnas, sticky="nsew",
                                  padx=(0, 10 if i % columnas < columnas - 1 else 0), pady=(0, 10))
         tk.Misc.bind(fila, "<Configure>", distribuir, add="+")
-        etiquetas = ctk.CTkFrame(self._metricas, fg_color="transparent")
+        etiquetas = BarraAdaptable(self._metricas)
         etiquetas.pack(fill="x")
-        Insignia(etiquetas, f"Clientes: {datos['clientes']}", tono="gris").pack(side="left", padx=(0, 8))
-        Insignia(etiquetas, f"No encontrados: {est['No Encontrado']}", tono="gris").pack(side="left", padx=(0, 8))
+        etiquetas.agregar(Insignia(etiquetas, f"Clientes: {datos['clientes']}", tono="gris"))
+        etiquetas.agregar(Insignia(etiquetas, f"No encontrados: {est['No Encontrado']}", tono="gris"))
         if datos["errores"]:
-            Insignia(etiquetas, f"Archivos con error: {datos['errores']}", tono="rojo").pack(side="left")
+            etiquetas.agregar(Insignia(etiquetas, f"Archivos con error: {datos['errores']}", tono="rojo"))
 
         self._presentar_estado(total, est["Sin validar"])
 

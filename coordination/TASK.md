@@ -10,7 +10,7 @@
 
 ## Instrucciones para Antigravity
 
-1. Lee este archivo y `TASK_HANDOFF.md` antes de modificar código.
+1. Lee este archivo y `docs/historico/TASK_HANDOFF.md` antes de modificar código.
 2. No trabajes sobre `main`.
 3. No borres datos, certificados, claves ni archivos fuera del repositorio.
 4. Reproduce el problema antes de corregirlo cuando sea posible.

@@ -437,9 +437,12 @@ def test_tabla_altura_minima_y_botones_visibles(tmp_path, monkeypatch, size, mod
         assert cont.winfo_width() > 0
         # Tabla con altura útil mínima en modo compacto.
         assert tabla.winfo_height() >= resp.ALTURA_MIN_TABLA
-        # Scroll horizontal y vertical presentes.
-        assert pantalla._scroll_x.winfo_manager() != ""
-        assert pantalla._scroll_y.winfo_manager() != ""
+        # tksheet oculta las barras cuando todo el contenido cabe.
+        for barra, vista in ((pantalla._scroll_x, tabla.sheet.MT.xview),
+                             (pantalla._scroll_y, tabla.sheet.MT.yview)):
+            assert barra.winfo_exists()
+            if vista() != (0.0, 1.0):
+                assert barra.winfo_manager() != ""
         # Botones dentro del contenedor (no recortados).
         for btn in (pantalla._btn_validar, pantalla._btn_exportar, pantalla._btn_columnas):
             x = btn.winfo_rootx() - raiz.winfo_rootx()

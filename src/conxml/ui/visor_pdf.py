@@ -12,6 +12,8 @@ import customtkinter as ctk
 from PIL import Image, ImageTk
 import pypdfium2 as pdfium
 from conxml.ui import theme as th
+from conxml.ui.responsive import ajustar_dialogo
+from conxml.ui.widgets import BarraAdaptable
 
 
 class VisorPDF(ctk.CTkToplevel):
@@ -19,8 +21,7 @@ class VisorPDF(ctk.CTkToplevel):
         super().__init__(parent)
         self.ruta = ruta
         self.title('ConXml - Vista previa PDF')
-        self.geometry('980x760')
-        self.minsize(640, 480)
+        ajustar_dialogo(self, parent, 980, 760, (640, 480))
         self.doc = pdfium.PdfDocument(str(ruta))
         self.pagina = 0
         self._ajuste_after = None
@@ -29,22 +30,22 @@ class VisorPDF(ctk.CTkToplevel):
         self._cerrado = False
         self._temporales = tempfile.TemporaryDirectory(prefix='conxml-visor-')
         self.protocol('WM_DELETE_WINDOW', self._cerrar)
-        barra = ctk.CTkFrame(self)
+        barra = BarraAdaptable(self)
         barra.pack(fill='x', padx=12, pady=(12, 6))
         self.anterior = ctk.CTkButton(barra, text='Anterior', width=90, command=lambda: self._mover(-1))
-        self.anterior.pack(side='left')
+        barra.agregar(self.anterior)
         self.indice = ctk.CTkLabel(barra, text='')
-        self.indice.pack(side='left', padx=12)
+        barra.agregar(self.indice)
         self.siguiente = ctk.CTkButton(barra, text='Siguiente', width=90, command=lambda: self._mover(1))
-        self.siguiente.pack(side='left')
-        ctk.CTkButton(barra, text='Guardar PDF…', command=self._guardar).pack(side='right')
-        zoom = ctk.CTkFrame(self, fg_color="transparent")
+        barra.agregar(self.siguiente)
+        barra.agregar(ctk.CTkButton(barra, text='Guardar PDF…', command=self._guardar))
+        zoom = BarraAdaptable(self)
         zoom.pack(fill='x', padx=12, pady=(0, 6))
-        ctk.CTkButton(zoom, text='−', width=40, command=lambda: self._cambiar_zoom(-.25)).pack(side='left', padx=(0, 4))
-        ctk.CTkButton(zoom, text='+', width=40, command=lambda: self._cambiar_zoom(.25)).pack(side='left')
+        zoom.agregar(ctk.CTkButton(zoom, text='−', width=40, command=lambda: self._cambiar_zoom(-.25)))
+        zoom.agregar(ctk.CTkButton(zoom, text='+', width=40, command=lambda: self._cambiar_zoom(.25)))
         self.indice_zoom = ctk.CTkLabel(zoom, text='100%', width=60)
-        self.indice_zoom.pack(side='left', padx=6)
-        ctk.CTkButton(zoom, text='Ajustar ancho', width=120, command=self._ajustar_ancho).pack(side='left')
+        zoom.agregar(self.indice_zoom)
+        zoom.agregar(ctk.CTkButton(zoom, text='Ajustar ancho', width=120, command=self._ajustar_ancho))
         self.scroll = ctk.CTkFrame(self)
         self.scroll.pack(fill='both', expand=True, padx=12, pady=(0, 12))
         self.scroll.grid_rowconfigure(0, weight=1)

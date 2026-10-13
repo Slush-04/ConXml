@@ -64,3 +64,8 @@ conxml-*.spec
 data/preferencias.json
 data/boveda/
 data/clientes/
+
+# Local runtime artifacts and historical imported XMLs
+logs/
+data/cache/
+data/importaciones/

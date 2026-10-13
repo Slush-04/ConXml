@@ -443,14 +443,32 @@ class BarraAdaptable(ctk.CTkFrame):
         super().__init__(parent, fg_color="transparent", height=1, **kwargs)
         self._elementos = []
         self._distribucion = None
-        tk.Misc.bind(self, "<Configure>", self._acomodar, add="+")
+        self._reparto_pendiente = None
+        tk.Misc.bind(self, "<Configure>", self._programar_reparto, add="+")
+        tk.Misc.bind(self, "<Map>", self._programar_reparto, add="+")
 
     def agregar(self, widget):
         self._elementos.append(widget)
         widget.place(x=0, y=0)
         self._distribucion = None
-        self.after_idle(self._acomodar)
+        # Un texto o una fuente pueden cambiar sin redimensionar la barra.
+        tk.Misc.bind(widget, "<Configure>", self._programar_reparto, add="+")
+        self._programar_reparto()
         return widget
+
+    def _programar_reparto(self, event=None):
+        if self._reparto_pendiente is None:
+            self._reparto_pendiente = self.after_idle(self._repartir)
+
+    def _repartir(self):
+        self._reparto_pendiente = None
+        self._acomodar()
+
+    def destroy(self):
+        if self._reparto_pendiente is not None:
+            self.after_cancel(self._reparto_pendiente)
+            self._reparto_pendiente = None
+        super().destroy()
 
     def _acomodar(self, event=None):
         if event is not None and event.widget is not self:
@@ -475,16 +493,35 @@ class BarraAdaptable(ctk.CTkFrame):
             return
         self._distribucion = distribucion
         for widget, (x, y) in zip(self._elementos, posiciones):
-            widget.place_configure(x=x, y=y)
+            # CTk.place aplica el factor DPI; el alias heredado de Tk
+            # place_configure interpreta estas coordenadas como píxeles.
+            widget.place(x=x, y=y)
         self.configure(height=alto)
 
 
 def texto_adaptable(etiqueta, contenedor, margen=32):
     """Ajusta descripciones y rutas largas al ancho lógico de su panel."""
-    def ajustar(event):
-        if event.widget is contenedor and contenedor.winfo_viewable():
+    pendiente = None
+    def ajustar(event=None):
+        if (event is None or event.widget is contenedor) and contenedor.winfo_viewable() and etiqueta.winfo_exists():
             ancho = max(80, int(contenedor.winfo_width() / resp.escalado_widget(contenedor)) - margen)
             if etiqueta.cget("wraplength") != ancho:
                 etiqueta.configure(wraplength=ancho)
-    tk.Misc.bind(contenedor, "<Configure>", ajustar, add="+")
-    tk.Misc.bind(contenedor, "<Map>", ajustar, add="+")
+    enlaces = [(evento, tk.Misc.bind(contenedor, evento, ajustar, add="+"))
+               for evento in ("<Configure>", "<Map>")]
+    def inicializar():
+        nonlocal pendiente
+        pendiente = None
+        ajustar()
+
+    def limpiar(event):
+        if event.widget is not etiqueta:
+            return
+        if pendiente is not None:
+            etiqueta.after_cancel(pendiente)
+        for evento, enlace in enlaces:
+            tk.Misc.unbind(contenedor, evento, enlace)
+
+    tk.Misc.bind(etiqueta, "<Destroy>", limpiar, add="+")
+    # También funciona cuando la etiqueta se añade a un panel ya visible.
+    pendiente = etiqueta.after_idle(inicializar)

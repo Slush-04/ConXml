@@ -23,10 +23,12 @@ $prepare = @'
 from conxml.config import Config
 from conxml.catalog.db import Catalogo
 from conxml.estado_local import guardar
+from conxml.ui.introduccion import CLAVE_VISTA
 Config().inicializar()
 with Catalogo(Config().db_path) as catalogo:
     catalogo.crear_cliente('SMOKE', 'Prueba instalador', 'EKU9003173C9')
-guardar({'sesion': {'cliente': 'SMOKE'}, 'respaldo_al_cerrar': False})
+# Este perfil prueba actualización, sin interacción con el video de primera apertura.
+guardar({'sesion': {'cliente': 'SMOKE'}, 'respaldo_al_cerrar': False, CLAVE_VISTA: True})
 '@
 & $py -c $prepare
 if ($LASTEXITCODE -ne 0) { throw 'No se preparó la sesión de prueba' }

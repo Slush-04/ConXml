@@ -1,6 +1,6 @@
 # Plan de Implementación: Migración de la UI de Tkinter/ttk a CustomTkinter
 
-> El plan del MVP terminado quedó preservado en `tasks/plan-mvp.md` y `tasks/todo-mvp.md`.
+> El plan del MVP terminado quedó preservado en `docs/historico/tasks/plan-mvp.md` y `docs/historico/tasks/todo-mvp.md`.
 
 ## Overview
 
@@ -78,4 +78,4 @@ Migrar la interfaz gráfica de ConXml de **Tkinter/ttk** a **CustomTkinter (CTK)
 
 ## Nota: restauración multi-RFC (Fase 3)
 
-Antes de completar las Tasks 5-6 se detectó y corrigió una regresión en la capa de datos (se había perdido la columna `cliente` y la API `cliente=` en `db/importer/estatus/exportes`), que rompía 18+4 tests y bloqueaba el flujo end-to-end de la pantalla admin. El código original multi-RFC se recuperó del bytecode de `build/conxml/PYZ-00.pyz` (ver bitácora en `tasks/todo.md`). La Task 6 restaura además el selector de cliente (`CTkComboBox`) del build original.
+Antes de completar las Tasks 5-6 se detectó y corrigió una regresión en la capa de datos (se había perdido la columna `cliente` y la API `cliente=` en `db/importer/estatus/exportes`), que rompía 18+4 tests y bloqueaba el flujo end-to-end de la pantalla admin. El código original multi-RFC se recuperó del bytecode de `build/conxml/PYZ-00.pyz` (ver bitácora en `docs/historico/tasks/todo.md`). La Task 6 restaura además el selector de cliente (`CTkComboBox`) del build original.

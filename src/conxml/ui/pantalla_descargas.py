@@ -23,7 +23,7 @@ from conxml.ui import theme as th
 from conxml.ui.selector_fecha import SelectorFecha
 from conxml.ui.scroll import PaginaDesplazable
 from conxml.ui.widgets import (
-    BotonPrimario, BotonSecundario, Encabezado, Insignia, PanelCard,
+    BarraAdaptable, BotonPrimario, BotonSecundario, Encabezado, Insignia, PanelCard,
     texto_adaptable,
 )
 
@@ -81,16 +81,16 @@ class PantallaDescargas(ctk.CTkFrame):
         BotonSecundario(cred, "Examinar", self._elegir_key).grid(row=4, column=1, pady=(2, 8))
         ctk.CTkLabel(cred, text="Contraseña de .key", text_color=th.TEXTO, anchor="w").grid(row=5, column=0, columnspan=2, sticky="ew")
         ctk.CTkEntry(cred, textvariable=self._password, show="●", placeholder_text="Se usa solo durante la operación").grid(row=6, column=0, columnspan=2, pady=(2, 8), sticky="ew")
-        acciones_firma = ctk.CTkFrame(cred, fg_color="transparent")
+        acciones_firma = BarraAdaptable(cred)
         acciones_firma.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(0, 4))
         self._btn_guardar_firma = BotonSecundario(acciones_firma, "Guardar e.firma", self._guardar_archivos_firma)
-        self._btn_guardar_firma.pack(side="left", padx=(0, 8))
+        acciones_firma.agregar(self._btn_guardar_firma)
         self._btn_quitar_firma = BotonSecundario(acciones_firma, "Quitar guardada", self._quitar_archivos_firma)
-        self._btn_quitar_firma.pack(side="left", padx=(0, 8))
+        acciones_firma.agregar(self._btn_quitar_firma)
         self._btn_seguimiento = BotonSecundario(
             acciones_firma, "Activar seguimiento", self._alternar_seguimiento,
         )
-        self._btn_seguimiento.pack(side="left")
+        acciones_firma.agregar(self._btn_seguimiento)
 
         solicitud = ctk.CTkFrame(formulario, fg_color="transparent")
         solicitud.grid(row=0, column=2, sticky="nsew", padx=(12, 16), pady=14)
@@ -160,15 +160,24 @@ class PantallaDescargas(ctk.CTkFrame):
         texto_adaptable(self._cliente_lbl, self._contenedor)
         texto_adaptable(self._destino_lbl, self._contenedor)
         self.botones = [self._btn_solicitar, self._btn_verificar, self._btn_seguimiento]
-        self.bind("<Configure>", lambda evento: self._acomodar_formulario(evento.width), add="+")
+        tk.Misc.bind(formulario, "<Configure>", self._al_redimensionar_formulario, add="+")
 
     def aplicar_modo_compacto(self, ancho_compacto: bool, alto_compacto: bool) -> None:
         compacto = ancho_compacto or alto_compacto
         self._contenedor.pack(padx=8 if compacto else 16, pady=8 if compacto else 16)
-        self._acomodar_formulario(self.winfo_width())
+        self._acomodar_formulario(self._formulario.winfo_width())
+
+    def _al_redimensionar_formulario(self, evento) -> None:
+        if evento.widget is self._formulario:
+            self._acomodar_formulario(evento.width)
 
     def _acomodar_formulario(self, ancho: int) -> None:
-        apilado = ancho < 1060
+        # Configure expresa píxeles físicos; los controles usan unidades lógicas.
+        # El ancho del panel ya descuenta navegación, márgenes y desplazamiento.
+        ancho_logico = ancho / resp.escalado_widget(self._formulario)
+        if ancho_logico <= 1:
+            return
+        apilado = ancho_logico < 1028
         if apilado == self._modo_formulario_apilado:
             return
         self._modo_formulario_apilado = apilado

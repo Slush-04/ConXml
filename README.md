@@ -68,9 +68,16 @@ Cuenta con una **interfaz gráfica moderna** y personalizable (GUI) y con una **
   el visor trabaja solo con el periodo elegido.
 - Administración XML conserva sus vistas de CFDI, pagos y nómina y añade filtros
   por UUID, RFC, serie y folio.
+- El visor usa `tksheet` con páginas de 150 registros. Selecciona celdas o rangos
+  y copia con Ctrl+C (⌘C en macOS), o desde el menú contextual. Doble clic en
+  una cabecera ordena todos los resultados filtrados; doble clic en una fila abre
+  su PDF. Al cambiar de página se limpia la selección. Las acciones de vista
+  completa mantienen su alcance sobre todos los resultados filtrados.
+- La paginación limita las filas dibujadas; los resultados completos siguen
+  cargándose en memoria.
 - La descripción técnica de esta organización está en
   [`docs/arquitectura.md`](docs/arquitectura.md) y
-  [`configuraciones/boveda.md`](configuraciones/boveda.md).
+  [`docs/configuraciones/boveda.md`](docs/configuraciones/boveda.md).
 
 ---
 
@@ -261,3 +268,7 @@ o Windows. El Administrador y su token viven en el repo separado
 
 Consulta [construcción, publicación y pruebas locales en Mac](docs/instalador-actualizaciones.md)
 y el [contrato entre el Administrador y este repo](docs/flujo-administrador.md).
+
+## Organización de carpetas
+
+Consulta [el inventario y registro de organización](docs/orden-carpetas.md) para localizar documentación, datos, entregables y el respaldo de archivos antiguos.

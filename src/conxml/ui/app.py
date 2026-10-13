@@ -153,8 +153,9 @@ class ConXmlApp(ctk.CTkFrame):
         except Exception:
             master.geometry("1020x680")
         escala = resp.escalado_widget(master, ventana=True)
-        master.minsize(min(resp.MIN_ANCHO, max(1, int(master.winfo_screenwidth() / escala - 40))),
-                       min(resp.MIN_ALTO, max(1, int(master.winfo_screenheight() / escala - 60))))
+        _, _, ancho_util, alto_util = resp.area_util(master)
+        master.minsize(min(resp.MIN_ANCHO, max(1, int(ancho_util / escala - 40))),
+                       min(resp.MIN_ALTO, max(1, int(alto_util / escala - 60))))
         master.columnconfigure(0, weight=1)
         master.rowconfigure(0, weight=1)
         self.grid(sticky="nsew", padx=0, pady=0)

@@ -2,7 +2,7 @@
 
 Componente reutilizable para ocultar/mostrar columnas de cualquier
 ``ttk.Treeview`` de la aplicación. La guía para replicarlo en tablas nuevas
-vive en ``configuraciones/columnas-visibles-en-tablas.md``.
+vive en ``docs/configuraciones/columnas-visibles-en-tablas.md``.
 
 Uso típico dentro de una pantalla::
 
@@ -22,6 +22,7 @@ from tkinter import messagebox
 
 from conxml.config import Config
 from conxml.ui import theme as th
+from conxml.ui.responsive import ajustar_dialogo
 from conxml.ui.widgets import BotonPrimario, BotonSecundario
 
 ColumnasDef = list[tuple[str, str, int]]
@@ -103,14 +104,10 @@ class DialogoColumnas(ctk.CTkToplevel):
     ) -> None:
         super().__init__(parent)
         self.title(f"Columnas visibles — {titulo}")
-        self.geometry("430x540")
-        self.minsize(400, 360)
+        ajustar_dialogo(self, parent, 430, 540, (400, 360))
         self.configure(fg_color=th.FONDO)
         self.transient(parent.winfo_toplevel())
         self.after(60, self.grab_set)
-        self.geometry(
-            f"+{max(parent.winfo_rootx() - 60, 0)}+{max(parent.winfo_rooty() - 40, 0)}"
-        )
 
         self._claves = [c[0] for c in cols_def]
         self._al_aceptar = al_aceptar
