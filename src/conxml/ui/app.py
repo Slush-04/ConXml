@@ -133,6 +133,9 @@ class ConXmlApp(ctk.CTkFrame):
         self.db_path = Config().db_path
         self._cola: queue.Queue = queue.Queue()
         self._ocupada = False
+        self._operacion_texto = ""
+        self._operacion_pantalla = None
+        self._cierre_solicitado = False
         sesion = estado_local.cargar().get('sesion', {})
         self._detalles_visibles = sesion.get('detalles_visibles', False)
         # Estado adaptable (no recrea tablas ni pierde selección/datos).
@@ -222,9 +225,13 @@ class ConXmlApp(ctk.CTkFrame):
         )
         self._lbl_cliente.pack(anchor="w", fill="x", padx=10, pady=(1, 8))
 
-        # Menú de navegación sin frames intermedios
-        self._nav = ctk.CTkFrame(self._panel_lateral, fg_color="transparent")
-        self._nav.pack(fill="x", padx=4)
+        # Navegación desplazable; el pie reserva espacio para actualizar.
+        self._zona_nav = ctk.CTkScrollableFrame(
+            self._panel_lateral, fg_color=th.FONDO_SIDEBAR, corner_radius=0
+        )
+        self._zona_nav.pack(fill="both", expand=True, padx=4)
+        self._nav = ctk.CTkFrame(self._zona_nav, fg_color="transparent")
+        self._nav.pack(fill="x")
         self._nav.columnconfigure(0, minsize=4)
         self._nav.columnconfigure(1, weight=1)
 
@@ -304,7 +311,7 @@ class ConXmlApp(ctk.CTkFrame):
 
         # Información de Base de Datos en el pie del Sidebar
         marco_bd = ctk.CTkFrame(self._panel_lateral, fg_color="transparent")
-        marco_bd.pack(fill="x", side="bottom", padx=16, pady=16)
+        marco_bd.pack(fill="x", side="bottom", padx=16, pady=12, before=self._lbl_subtitulo)
         self._marco_bd = marco_bd
         self._lbl_version = ctk.CTkLabel(
             marco_bd, text=f"Versión {__version__}",
@@ -326,6 +333,15 @@ class ConXmlApp(ctk.CTkFrame):
         # Área de contenido
         self._contenido = ctk.CTkFrame(self, fg_color=th.FONDO, corner_radius=0)
         self._contenido.grid(row=0, column=1, sticky="nsew", rowspan=2)
+
+        self._estado_operacion = ctk.CTkFrame(self, fg_color=th.FONDO_ENTRADA, corner_radius=0)
+        self._estado_operacion.grid(row=2, column=1, sticky="ew")
+        self._estado_operacion.columnconfigure(0, weight=1)
+        self._texto_operacion = ctk.CTkLabel(self._estado_operacion, text="", anchor="w")
+        self._texto_operacion.grid(row=0, column=0, sticky="ew", padx=12, pady=4)
+        self._progreso_operacion = ctk.CTkProgressBar(self._estado_operacion, mode="indeterminate", height=5)
+        self._progreso_operacion.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 6))
+        self._estado_operacion.grid_remove()
 
         self._pantallas: dict[str, ctk.CTkFrame | tk.Frame] = {}
         self._pantallas["clientes"] = PantallaClientes(self._contenido, self)
@@ -669,8 +685,8 @@ class ConXmlApp(ctk.CTkFrame):
                 self._marco_cliente.pack_forget()
                 self._lbl_db_ruta.configure(wraplength=ancho - 32)
             else:
-                self._lbl_subtitulo.pack(anchor="w", padx=16, pady=(0, 20), before=self._nav)
-                self._marco_cliente.pack(fill="x", padx=10, pady=(0, 14), before=self._nav)
+                self._lbl_subtitulo.pack(anchor="w", padx=16, pady=(0, 20), before=self._zona_nav._parent_frame)
+                self._marco_cliente.pack(fill="x", padx=10, pady=(0, 14), before=self._zona_nav._parent_frame)
                 self._lbl_db_ruta.configure(wraplength=200)
         except Exception:
             pass
@@ -704,6 +720,12 @@ class ConXmlApp(ctk.CTkFrame):
             )
             return False
         self._ocupada = True
+        self._operacion_texto = texto
+        self._operacion_pantalla = self._pantalla_actual
+        self._texto_operacion.configure(text=texto)
+        self._estado_operacion.grid()
+        self._progreso_operacion.configure(mode="indeterminate")
+        self._progreso_operacion.start()
         for pantalla in self._pantallas.values():
             for boton in getattr(pantalla, "botones", []):
                 boton.configure(state="disabled")
@@ -730,7 +752,13 @@ class ConXmlApp(ctk.CTkFrame):
                 item = self._cola.get_nowait()
                 tipo = item[0]
                 if tipo == "progreso":
-                    pantalla = self._pantalla_actual
+                    actual, total = item[1:3]
+                    if total > 0:
+                        self._progreso_operacion.stop()
+                        self._progreso_operacion.configure(mode="determinate")
+                        self._progreso_operacion.set(min(1, max(0, actual / total)))
+                        self._texto_operacion.configure(text=f"{self._operacion_texto} · {actual}/{total}" + (" · Se cerrará al terminar" if self._cierre_solicitado else ""))
+                    pantalla = self._operacion_pantalla
                     if pantalla is not None and hasattr(pantalla, "on_progreso"):
                         pantalla.on_progreso(item[1], item[2])
                     actualizaciones = getattr(self, "actualizaciones", None)
@@ -762,21 +790,37 @@ class ConXmlApp(ctk.CTkFrame):
                         return
         except queue.Empty:
             pass
-        self._poll_after = self.after(80, self._procesar_cola)
+        except Exception:
+            self.registro("ERROR: " + traceback.format_exc())
+            messagebox.showerror("Error al mostrar resultado", "No se pudo mostrar el progreso o resultado de la operación. Consulta el diagnóstico.", parent=self)
+        finally:
+            try:
+                if self.winfo_exists():
+                    self._poll_after = self.after(80, self._procesar_cola)
+                    if self._cierre_solicitado and not self._ocupada:
+                        self._cierre_solicitado = False
+                        self.after_idle(self._al_cerrar)
+            except tk.TclError:
+                pass
 
     def _terminar_operacion(self) -> None:
         self._ocupada = False
+        self._progreso_operacion.stop()
+        self._estado_operacion.grid_remove()
+        self._operacion_pantalla = None
         for pantalla in self._pantallas.values():
             for boton in getattr(pantalla, "botones", []):
                 boton.configure(state="normal")
 
     def _al_cerrar(self) -> None:
         if self._ocupada:
-            messagebox.showwarning(
+            if messagebox.askyesno(
                 "Operación en curso",
-                "Hay una operación en curso. Espera a que termine antes de cerrar.",
+                f"Se está ejecutando: {self._operacion_texto}.\n\n¿Cerrar automáticamente cuando termine?",
                 parent=self,
-            )
+            ):
+                self._cierre_solicitado = True
+                self._texto_operacion.configure(text=f"{self._operacion_texto} · Se cerrará al terminar")
             return
         self.guardar_sesion()
         if estado_local.cargar().get('respaldo_al_cerrar', True):

@@ -253,7 +253,7 @@ class PantallaDescargas(ctk.CTkFrame):
 
     def _revision_automatica(self) -> None:
         self._revision_after = None
-        if not self._firmas_activas:
+        if not self._firmas_activas or getattr(self.app, "_cierre_solicitado", False):
             return
         if self.app._ocupada:
             self._programar_revision()

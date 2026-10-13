@@ -32,7 +32,7 @@ class Actualizaciones:
         self.button = ctk.CTkButton(app._marco_bd, text='↻ Versión', width=112, height=28,
                                    fg_color=th.SIDEBAR_HOVER, hover_color=th.PRIMARIO_HOVER, text_color=th.SIDEBAR_TEXTO_ACTIVO,
                                    command=self.click)
-        self.button.pack(fill='x', pady=(12, 0))
+        self.button.pack(fill='x', pady=(0, 8), before=app._lbl_version)
         self.tooltip = ctk.CTkLabel(app, text='Buscar actualización', fg_color=th.FONDO_ENTRADA)
         self.button.bind('<Enter>', self._show_tip)
         self.button.bind('<Leave>', lambda _: self.tooltip.place_forget())

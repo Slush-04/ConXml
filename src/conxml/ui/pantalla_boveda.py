@@ -228,8 +228,8 @@ class PantallaBoveda(ctk.CTkFrame):
         if self._origen_externo and self._origen.get().strip():
             carpeta = Path(self._origen.get().strip())
             archivos = sorted(
-                archivo for archivo in carpeta.rglob("*.xml")
-                if archivo.is_file()
+                archivo for archivo in carpeta.rglob("*")
+                if archivo.is_file() and archivo.suffix.lower() == ".xml"
             ) if carpeta.is_dir() else []
         elif not self.app.cliente_actual:
             archivos = []
@@ -265,20 +265,34 @@ class PantallaBoveda(ctk.CTkFrame):
         if not self.app.cliente_actual:
             self.app.cambiar_cliente()
             return
-        archivos = self._archivos_actuales
+        archivos = list(self._archivos_actuales)
         if not archivos:
             messagebox.showinfo("Bóveda", "No hay XML para la selección actual.", parent=self); return
         ajustes = self.app._pantallas.get("ajustes")
         limpiar = ajustes.limpiar_al_leer.get() if ajustes else True
         self._detalles_usados = True; self.app.mostrar_detalles(True); self._resumen.mostrar("Cargando selección en el catálogo…")
-        self.app.ejecutar(lambda: self._run_carga(archivos, limpiar), self._presentar_carga, "Cargando XML seleccionados")
+        cliente = self.app.cliente_actual
+        self.app.ejecutar(lambda: self._run_carga(archivos, limpiar, cliente), self._presentar_carga, "Cargando XML seleccionados")
 
-    def _run_carga(self, archivos: list[Path], limpiar: bool):
+    def _run_carga(self, archivos: list[Path], limpiar: bool, cliente: str | None = None):
         with Catalogo(self.app.db_path) as catalogo:
-            return importar_carpetas(catalogo, archivos, self.app.cliente_actual, limpiar_antes=limpiar)
+            return importar_carpetas(catalogo, archivos, cliente or self.app.cliente_actual, limpiar_antes=limpiar)
 
     def _presentar_carga(self, resultado) -> None:
-        self._resumen.mostrar("Selección cargada", detalle=f"Procesados: {resultado.procesados} | Insertados: {resultado.insertados} | Errores: {resultado.errores}")
         self.app.actualizar_resumen()
-        admin = self.app._pantallas.get("admin40")
-        if admin: admin._cargar_tabla()
+        for clave in ("admin40", "pagos", "nomina"):
+            visor = self.app._pantallas.get(clave)
+            if visor:
+                visor._cliente_cargado = self.app.cliente_actual
+                visor._limpiar_filtros()
+        self._resumen.mostrar("Selección cargada", tono="rojo" if resultado.errores else "verde", detalle=f"Procesados: {resultado.procesados} | Insertados: {resultado.insertados} | Ya existentes: {resultado.omitidos} | Errores: {resultado.errores}. Abre XML 4.0, pagos o nómina para verlos.")
+
+        if resultado.detalle_errores:
+            for detalle in resultado.detalle_errores[:10]:
+                self.app.registro(f"ERROR: Importación XML: {detalle}")
+            messagebox.showwarning(
+                "XML que no se pudieron cargar",
+                "Algunos archivos no se importaron. Los XML válidos siguen disponibles en los visores.\n\n"
+                + "\n".join(resultado.detalle_errores[:3]),
+                parent=self,
+            )

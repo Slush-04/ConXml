@@ -272,3 +272,10 @@ y el [contrato entre el Administrador y este repo](docs/flujo-administrador.md).
 ## Organización de carpetas
 
 Consulta [el inventario y registro de organización](docs/orden-carpetas.md) para localizar documentación, datos, entregables y el respaldo de archivos antiguos.
+
+## Mejoras de uso en 0.2.30
+
+- La actualización queda fija encima de la versión; el menú lateral permite desplazarse cuando no cabe.
+- Las operaciones muestran su nombre y progreso en una barra visible al cambiar de pantalla. Al salir durante una tarea se puede elegir cerrar al terminar, conservando el respaldo habitual.
+- Los fallos al mostrar un resultado no detienen el procesamiento de las siguientes tareas.
+- La carga desde carpeta externa reconoce `.xml` y `.XML`, refresca los tres visores y limpia búsquedas anteriores. El resultado muestra insertados, duplicados y errores; los errores de importación también se presentan en un aviso.
