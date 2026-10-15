@@ -28,6 +28,7 @@ if os.path.exists(ICONO_ICNS):
 
 # Incluir recursos de CustomTkinter (fuentes, temas JSON)
 datas_gui += collect_data_files("customtkinter")
+datas_gui += collect_data_files("tzdata")
 
 # En macOS no se recomienda UPX porque puede invalidar binarios Mach-O
 usar_upx = False if sys.platform == "darwin" else True

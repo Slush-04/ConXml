@@ -15,6 +15,7 @@ from conxml.archivos import abrir_local
 from conxml.respaldos import crear_respaldo, restaurar_respaldo
 from conxml.ui import theme as th
 from conxml.ui.scroll import PaginaDesplazable
+from conxml.ui.periodicidad_sat import ConfiguracionPeriodicaSAT
 from conxml.ui.widgets import (
     BotonPrimario, BotonSecundario, Encabezado, PanelCard, ResumenOperacion,
     BarraAdaptable, texto_adaptable,
@@ -157,6 +158,9 @@ class PantallaAjustes(ctk.CTkFrame):
         self._estado_destino_sat = ctk.CTkLabel(contenido_sat, text="", wraplength=650, justify="left", anchor="w", text_color=th.TEXTO_SECUNDARIO)
         self._estado_destino_sat.pack(fill="x")
         self._cargar_destino_sat()
+        self._periodicidad_sat = ConfiguracionPeriodicaSAT(contenedor, app)
+        self._periodicidad_sat.pack(fill="x", pady=(0, 16))
+        self.botones.append(self._periodicidad_sat._btn_guardar)
         for panel in (content_op, content_info, contenido, contenido_sat):
             for widget in panel.winfo_children():
                 if isinstance(widget, ctk.CTkLabel):
@@ -188,6 +192,15 @@ class PantallaAjustes(ctk.CTkFrame):
     def al_mostrar(self) -> None:
         self.actualizar_stats()
         self._cargar_destino_sat()
+        self._periodicidad_sat.cargar()
+
+    def mostrar_periodicidad_sat(self) -> None:
+        def desplazar():
+            lienzo = self._contenedor._parent_canvas
+            limites = lienzo.bbox('all')
+            if limites:
+                lienzo.yview_moveto(self._periodicidad_sat.winfo_y() / max(1, limites[3]))
+        self.after_idle(desplazar)
 
     def _cargar_destino_sat(self) -> None:
         config = Config()

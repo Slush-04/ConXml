@@ -124,6 +124,18 @@ CREATE TABLE IF NOT EXISTS solicitudes_descarga (
     creada_en TEXT NOT NULL,
     actualizada_en TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS sat_ejecuciones_periodicas (
+    cliente TEXT NOT NULL,
+    tarea TEXT NOT NULL,
+    instante TEXT NOT NULL,
+    estado TEXT NOT NULL,
+    mensaje TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (cliente, tarea, instante)
+);
+CREATE TABLE IF NOT EXISTS sat_solicitudes_periodicas (
+    id_sat TEXT PRIMARY KEY
+);
 """
 
 _COLUMNAS = (
@@ -319,15 +331,19 @@ class Catalogo:
             "SELECT * FROM solicitudes_descarga WHERE id_sat = ?", (id_sat,),
         ).fetchone()
 
-    def solicitudes_descarga_pendientes(self, rfcs: set[str]) -> list[sqlite3.Row]:
+    def solicitudes_descarga_pendientes(self, rfcs: set[str], *, incluir_periodicas: bool = True) -> list[sqlite3.Row]:
         """Solicitudes que todavía pueden necesitar consulta o recuperación."""
         if not rfcs:
             return []
         self.conn.row_factory = sqlite3.Row
         marcadores = ", ".join("?" for _ in rfcs)
+        filtro_periodicas = '' if incluir_periodicas else (
+            'AND NOT EXISTS (SELECT 1 FROM sat_solicitudes_periodicas p WHERE p.id_sat = solicitudes_descarga.id_sat) '
+        )
         return self.conn.execute(
             f"SELECT * FROM solicitudes_descarga WHERE rfc IN ({marcadores}) "
             "AND recuperado = 0 AND estado IN (1, 2, 3) "
+            + filtro_periodicas +
             "ORDER BY actualizada_en, id",
             tuple(sorted(rfcs)),
         ).fetchall()

@@ -929,8 +929,7 @@ def main() -> None:
             else:
                 logger.info("Sin cliente de inicio; mostrando selector en ventana principal")
                 raiz.title("ConXml — Seleccionar cliente")
-                raiz.geometry("900x650")
-                raiz.minsize(760, 520)
+                resp.ajustar_dialogo(raiz, raiz, 920, 520, (640, 460))
                 raiz.protocol("WM_DELETE_WINDOW", raiz.destroy)
                 selector = PantallaClientes(
                     raiz, app=None, on_selected=abrir_programa, db_path=Config().db_path
@@ -951,8 +950,7 @@ def _mostrar_selector_clientes(parent, on_selected, db_path, on_close=None):
     """Abre el catálogo de clientes como ventana modal reutilizable."""
     selector = ctk.CTkToplevel(parent)
     selector.title("ConXml — Seleccionar cliente")
-    selector.geometry("900x650")
-    selector.minsize(760, 520)
+    resp.ajustar_dialogo(selector, parent, 920, 520, (640, 460))
     selector.configure(fg_color=th.FONDO)
     _aplicar_icono(selector)
     selector.transient(parent)

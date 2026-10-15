@@ -9,6 +9,7 @@ from conxml.catalog.db import Catalogo
 from conxml.catalog.importer import importar_carpetas
 from conxml.config import Config
 from conxml.sat.almacenamiento import guardar_paquete
+from conxml.sat.archivo_solicitudes import conservar_paquete
 from conxml.sat.descarga_masiva import ClienteDescargaSAT, ErrorDescargaSAT, RespuestaSAT
 
 
@@ -22,7 +23,7 @@ class ResultadoSeguimiento:
 
 
 def procesar_solicitud(
-    sat: ClienteDescargaSAT, db_path: Path, datos: dict, config: Config,
+    sat: ClienteDescargaSAT, db_path: Path, datos: dict, config: Config, *, modo: str | None = None,
 ) -> ResultadoSeguimiento:
     """Consulta el SAT y guarda cada paquete completado antes de pedir otro.
 
@@ -30,7 +31,7 @@ def procesar_solicitud(
     """
     respuesta = sat.verificar(datos["rfc"], datos["id_sat"])
     resultado = ResultadoSeguimiento(respuesta=respuesta, recuperada=bool(datos.get("recuperado")))
-    modo = config.modo_descarga_sat
+    modo = modo or config.modo_descarga_sat
     with Catalogo(db_path) as catalogo:
         catalogo.guardar_solicitud_descarga(
             cliente=datos["cliente"], rfc=datos["rfc"], direccion=datos["direccion"],
@@ -52,6 +53,7 @@ def procesar_solicitud(
             if paquete_id in recuperados:
                 continue
             zip_bytes = sat.descargar_paquete(datos["rfc"], paquete_id)
+            conservar_paquete(zip_bytes, config, datos["cliente"], datos["id_sat"], paquete_id)
             guardado = guardar_paquete(
                 zip_bytes, config, datos["cliente"], datos["rfc"],
                 datos["id_sat"], paquete_id, modo=modo,

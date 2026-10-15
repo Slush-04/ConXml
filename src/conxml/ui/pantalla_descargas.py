@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 import tkinter as tk
+import json
+import sqlite3
 from datetime import date
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 import customtkinter as ctk
+from PIL import ImageTk
 
 from conxml.catalog.db import Catalogo
+from conxml.boveda import clave_segura
 from conxml.config import Config
 from conxml.sat.boveda_firma import archivos_guardados, guardar_archivos, quitar_archivos, carpeta_firma
 from conxml.sat.descarga_masiva import (
@@ -18,9 +23,13 @@ from conxml.sat.descarga_masiva import (
     RespuestaSAT,
 )
 from conxml.sat.seguimiento import ResultadoSeguimiento, procesar_solicitud
+from conxml.sat.archivo_solicitudes import conservar_paquete, exportar_paquetes, limpiar_vencidas, paquetes_locales
+from conxml.sat.periodicas import ejecutar_pendientes, planes
+from conxml.sat.autorizacion_periodica import autorizar, cargar_firma, revocar
 from conxml.ui import responsive as resp
 from conxml.ui.tabla_visor import TablaVisor
 from conxml.ui import theme as th
+from conxml.ui.iconos import icono
 from conxml.ui.selector_fecha import SelectorFecha
 from conxml.ui.scroll import PaginaDesplazable
 from conxml.ui.widgets import (
@@ -42,6 +51,8 @@ class PantallaDescargas(ctk.CTkFrame):
         self.app = app
         self._firmas_activas: dict[str, CredencialEFirma] = {}
         self._revision_after: str | None = None
+        self._periodica_after = None
+        self._ajuste_historial = None
         self._rfc_visible = ""
         self._cliente_firma_visible: str | None = None
         self._modo_formulario_apilado: bool | None = None
@@ -58,6 +69,22 @@ class PantallaDescargas(ctk.CTkFrame):
         self._cliente_lbl.pack(fill="x", padx=8, pady=(12, 4))
         self._destino_lbl = ctk.CTkLabel(self._contenedor, text="", anchor="w", justify="left", wraplength=650, text_color=th.TEXTO_SECUNDARIO)
         self._destino_lbl.pack(fill="x", padx=8, pady=(0, 8))
+
+        card_periodica = PanelCard(self._contenedor)
+        card_periodica.pack(fill='x', pady=(4, 8))
+        contenido_periodico = ctk.CTkFrame(card_periodica, fg_color='transparent')
+        contenido_periodico.pack(fill='x', padx=16, pady=12)
+        self._aviso_periodica = ctk.CTkLabel(contenido_periodico, text='Descarga periódica · configura los horarios en Ajustes.',
+                                           anchor='w', justify='left', wraplength=650, font=(th.FUENTE, th.TAM_BODY, 'bold'))
+        self._aviso_periodica.pack(fill='x')
+        texto_adaptable(self._aviso_periodica, contenido_periodico, margen=8)
+        acciones_periodicas = BarraAdaptable(contenido_periodico)
+        acciones_periodicas.pack(fill='x', pady=(8, 0))
+        self._btn_config_periodica = acciones_periodicas.agregar(BotonSecundario(
+            acciones_periodicas, 'Configurar horarios', self._abrir_periodicidad))
+        self._btn_autorizar_periodica = acciones_periodicas.agregar(BotonSecundario(
+            acciones_periodicas, 'Autorizar e.firma', self._autorizar_periodica))
+        acciones_periodicas.agregar(BotonSecundario(acciones_periodicas, 'Revocar autorización', self._revocar_periodica))
 
         formulario = PanelCard(self._contenedor)
         formulario.pack(fill="x", pady=(8, 10))
@@ -138,11 +165,15 @@ class PantallaDescargas(ctk.CTkFrame):
         marco = ctk.CTkFrame(historial, fg_color="transparent")
         marco.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 16))
         marco.rowconfigure(0, weight=1); marco.columnconfigure(0, weight=1)
-        self._tabla = TablaVisor(marco, columns=("id", "direccion", "periodo", "estado", "cfdis", "mensaje"))
+        self._tabla = TablaVisor(marco, columns=("id", "direccion", "periodo", "estado", "cfdis", "mensaje", "bajar"),
+                                 seleccion_por_filas=True)
+        self._tabla.sheet.set_options(empty_horizontal=0, empty_vertical=0)
+        self._tabla.sheet.disable_bindings('column_width_resize')
         for col, titulo, ancho in (
             ("id", "Solicitud SAT", 165), ("direccion", "Tipo", 76),
             ("periodo", "Periodo", 132), ("estado", "Estado", 90),
             ("cfdis", "CFDI", 58), ("mensaje", "Respuesta SAT", 210),
+            ("bajar", "Bajar", 50),
         ):
             self._tabla.heading(col, text=titulo)
             self._tabla.column(
@@ -150,10 +181,21 @@ class PantallaDescargas(ctk.CTkFrame):
                 anchor="w", stretch=(col == "mensaje"),
             )
         self._tabla.grid(row=0, column=0, sticky="nsew")
+        self._icono_bajar = ImageTk.PhotoImage(icono('descargas', th.PRIMARIO).cget('light_image').resize((18, 18)), master=self._tabla)
+        self._descargables = set()
+        self._tabla.sheet.bind('<<SheetRedrawn>>', self._dibujar_bajar, add='+')
+        tk.Misc.bind(self._tabla.sheet.MT, '<ButtonRelease-1>', self._clic_bajar, add='+')
+        tk.Misc.bind(self._tabla.sheet.MT, '<Configure>', self._programar_ajuste_historial, add='+')
+        nota_historial = ctk.CTkLabel(historial, text='Disponibles durante 14 días desde su creación. ↓ Guarda el ZIP o extrae los XML.',
+                                    text_color=th.TEXTO_SECUNDARIO, font=(th.FUENTE, th.TAM_NOTA), anchor='w', justify='left')
+        nota_historial.grid(row=2, column=0, sticky='ew', padx=16, pady=(0, 12))
+        texto_adaptable(nota_historial, historial, margen=32)
         texto_adaptable(self._cliente_lbl, self._contenedor)
         texto_adaptable(self._destino_lbl, self._contenedor)
-        self.botones = [self._btn_solicitar, self._btn_verificar, self._btn_seguimiento]
+        self.botones = [self._btn_solicitar, self._btn_verificar, self._btn_seguimiento, self._btn_autorizar_periodica]
         tk.Misc.bind(formulario, "<Configure>", self._al_redimensionar_formulario, add="+")
+        if getattr(app, 'db_path', None):
+            self._periodica_after = self.after(2_000, self._revision_periodica)
 
     def aplicar_modo_compacto(self, ancho_compacto: bool, alto_compacto: bool) -> None:
         compacto = ancho_compacto or alto_compacto
@@ -192,6 +234,7 @@ class PantallaDescargas(ctk.CTkFrame):
         if not cliente:
             self.app.cambiar_cliente()
             return
+        limpiar_vencidas(Config(), self.app.db_path)
         with Catalogo(self.app.db_path) as catalogo:
             detalle = catalogo.obtener_cliente(cliente)
             rfc = detalle["rfc"] if detalle else ""
@@ -205,6 +248,7 @@ class PantallaDescargas(ctk.CTkFrame):
         destino = config.carpeta_zip_sat if config.modo_descarga_sat == "zip" else config.carpeta_boveda
         self._destino_lbl.configure(text=f"Guardado: {modo}\nDestino: {destino}\nPuedes cambiarlo en Configuración.")
         self._renderizar_historial(solicitudes)
+        self._mostrar_periodica()
 
     def _actualizar_aviso_seguimiento(self) -> None:
         activo = self._rfc_visible in self._firmas_activas
@@ -253,7 +297,7 @@ class PantallaDescargas(ctk.CTkFrame):
             return
         firmas = dict(self._firmas_activas)
         with Catalogo(self.app.db_path) as catalogo:
-            pendientes = [dict(fila) for fila in catalogo.solicitudes_descarga_pendientes(set(firmas))]
+            pendientes = [dict(fila) for fila in catalogo.solicitudes_descarga_pendientes(set(firmas), incluir_periodicas=False)]
         if not pendientes:
             self._programar_revision()
             return
@@ -313,6 +357,11 @@ class PantallaDescargas(ctk.CTkFrame):
         self._programar_revision()
 
     def destroy(self) -> None:
+        for atributo in ('_periodica_after', '_ajuste_historial'):
+            pendiente = getattr(self, atributo, None)
+            if pendiente is not None:
+                self.after_cancel(pendiente)
+                setattr(self, atributo, None)
         if self._revision_after is not None:
             self.after_cancel(self._revision_after)
             self._revision_after = None
@@ -542,6 +591,7 @@ class PantallaDescargas(ctk.CTkFrame):
                 admin._cargar_tabla()
 
     def _renderizar_historial(self, filas) -> None:
+        self._descargables = set()
         seleccion = set(self._tabla.selection())
         self._estado_lbl.configure(
             text=(f"{len(filas)} solicitudes de este cliente" if filas
@@ -554,10 +604,240 @@ class PantallaDescargas(ctk.CTkFrame):
             hasta = date.fromisoformat(fila['fecha_final']).strftime("%d/%m/%Y")
             periodo = f"{desde} a {hasta}"
             estado = ESTADOS.get(fila["estado"], "Pendiente")
+            disponible = fila['estado'] not in (4, 5, 6) or bool(paquetes_locales(Config(), self.app.cliente_actual, fila['id_sat']))
+            if disponible:
+                self._descargables.add(fila['id_sat'])
             self._tabla.insert(
                 "", "end", iid=fila["id_sat"],
                 values=(fila["id_sat"], fila["direccion"], periodo, estado,
-                        fila["numero_cfdis"], fila["mensaje"] or fila["cod_estatus"]),
+                        fila["numero_cfdis"], fila["mensaje"] or fila["cod_estatus"],
+                        '' if disponible else '—'),
             )
             if fila["id_sat"] in seleccion:
                 self._tabla.selection_set(fila["id_sat"])
+
+    def _mostrar_periodica(self):
+        from conxml import estado_local
+        cliente = self.app.cliente_actual
+        plan = planes(Config()).get(cliente, {})
+        autorizado = cliente in estado_local.cargar().get('sat_autorizados', [])
+        estado = 'Activa' if plan.get('activo') else 'Desactivada'
+        texto = f'Descarga periódica · {estado} para este cliente'
+        if plan:
+            from conxml.sat.periodicas import DIAS
+            for tarea, titulo in (('solicitar', 'Solicitar'), ('revisar', 'Revisar')):
+                horario = plan[tarea]
+                frecuencia = f"Cada {horario['cada']} días" if horario['frecuencia'] == 'Diario' else f"{DIAS[horario['dia']]} · cada {horario['cada']} semanas"
+                texto += f"\n{titulo}: {frecuencia} a las {horario['hora']}"
+        texto += '\nE.firma autorizada para segundo plano.' if autorizado else '\nAutoriza la e.firma para ejecutar con ConXml cerrado.'
+        self._aviso_periodica.configure(text=texto)
+
+    def _abrir_periodicidad(self):
+        self.app.navegar('ajustes')
+        self.app._pantallas['ajustes'].mostrar_periodicidad_sat()
+
+    def _autorizar_periodica(self):
+        try:
+            cliente, rfc = self._datos_cliente()
+            cer, key, password = self._credenciales()
+        except ErrorDescargaSAT as exc:
+            self._presentar_error(exc)
+            return
+        def trabajo():
+            from conxml import estado_local
+            from conxml.sat.programador_sistema import instalar
+            config = Config()
+            autorizar(config, cliente, rfc, cer, key, password)
+            instalar(config)
+            with Catalogo(self.app.db_path) as cat:
+                cat.conn.execute("DELETE FROM sat_ejecuciones_periodicas WHERE cliente=? AND estado='sin_autorizacion'", (cliente,))
+                cat.commit()
+            clientes = set(estado_local.cargar().get('sat_autorizados', []))
+            clientes.add(cliente)
+            estado_local.guardar({'sat_autorizados': sorted(clientes)})
+        def presentar(_resultado):
+            self._mostrar_firma_cliente(cliente)
+            self._mostrar_periodica()
+            self._estado_lbl.configure(text='E.firma autorizada. Guarda los horarios del cliente en Configuración.')
+        self.app.ejecutar(trabajo, presentar, 'Autorizando descargas SAT periódicas', al_error=self._presentar_error)
+        self._password.set('')
+
+    def _revocar_periodica(self):
+        from conxml import estado_local
+        cliente = self.app.cliente_actual
+        if not cliente:
+            return
+        try:
+            revocar(Config(), cliente)
+            clientes = set(estado_local.cargar().get('sat_autorizados', []))
+            clientes.discard(cliente)
+            estado_local.guardar({'sat_autorizados': sorted(clientes)})
+            self._mostrar_periodica()
+        except Exception:
+            self._presentar_error(ErrorDescargaSAT('No se pudo revocar la autorización del sistema.'))
+
+    def _revision_periodica(self):
+        self._periodica_after = None
+        if getattr(self.app, '_cierre_solicitado', False):
+            return
+        if getattr(self.app, '_ocupada', False):
+            self._periodica_after = self.after(60_000, self._revision_periodica)
+            return
+        def presentar(resultados):
+            if getattr(self.app, 'cliente_actual', None):
+                with Catalogo(self.app.db_path) as cat:
+                    filas = cat.solicitudes_descarga_cliente(self.app.cliente_actual)
+                self._renderizar_historial(filas)
+                self._mostrar_periodica()
+            for resultado in resultados:
+                self.app.registro(f"SAT periódico · {resultado['cliente']} · {resultado['tarea']}: {resultado['mensaje']}")
+            if resultados:
+                self.app.actualizar_resumen()
+            self._periodica_after = self.after(60_000, self._revision_periodica)
+        def error(_exc):
+            self._estado_lbl.configure(text='No se completó la tarea periódica. Revisa su configuración y autorización.')
+            self._periodica_after = self.after(60_000, self._revision_periodica)
+        if not any(p.get('activo') for p in planes(Config()).values()):
+            # La caducidad también se aplica al historial manual, incluso si
+            # esta pantalla permanece abierta y no hay calendarios activados.
+            try:
+                eliminadas = limpiar_vencidas(Config(), self.app.db_path)
+                if eliminadas and getattr(self.app, 'cliente_actual', None):
+                    with Catalogo(self.app.db_path) as cat:
+                        self._renderizar_historial(cat.solicitudes_descarga_cliente(self.app.cliente_actual))
+            except (OSError, sqlite3.Error):
+                self._estado_lbl.configure(text='No se pudo limpiar el historial vencido; se reintentará.')
+            self._periodica_after = self.after(60_000, self._revision_periodica)
+            return
+        iniciado = self.app.ejecutar(lambda: ejecutar_pendientes(Config()), presentar,
+                                    'Ejecutando programación SAT', al_error=error)
+        if not iniciado:
+            self._periodica_after = self.after(60_000, self._revision_periodica)
+
+    def _programar_ajuste_historial(self, _event=None):
+        if self._ajuste_historial is None:
+            self._ajuste_historial = self.after_idle(self._ajustar_historial)
+
+    def _ajustar_historial(self):
+        self._ajuste_historial = None
+        ancho = self._tabla.sheet.MT.winfo_width() - 6
+        if ancho < 100:
+            return
+        # Proporciones estables: Respuesta SAT y el identificador reciben más espacio.
+        bases = {'id': 160, 'direccion': 76, 'periodo': 148, 'estado': 86,
+                 'cfdis': 56, 'mensaje': 200, 'bajar': 50}
+        total = sum(bases.values())
+        anchos = {col: int(ancho * peso / total) for col, peso in bases.items()}
+        anchos['mensaje'] += ancho - sum(anchos.values())
+        self._tabla.ajustar_anchos(anchos)
+
+    def _clic_bajar(self, evento):
+        columna = self._tabla.sheet.identify_column(evento, allow_end=False)
+        fila = self._tabla.sheet.identify_row(evento, allow_end=False)
+        if columna != 6 or fila is None or fila >= len(self._tabla.items_pagina()):
+            return
+        if getattr(self.app, '_ocupada', False):
+            return
+        solicitud = self._tabla.items_pagina()[fila]
+        self._tabla.selection_set(solicitud)
+        self._bajar(solicitud)
+
+    def _bajar(self, solicitud):
+        config = Config()
+        limpiar_vencidas(config, self.app.db_path)
+        with Catalogo(self.app.db_path) as cat:
+            fila = cat.obtener_solicitud_descarga(solicitud)
+        if fila is None or fila['cliente'] != self.app.cliente_actual:
+            self.al_mostrar()
+            return
+        datos = dict(fila)
+        esperados = json.loads(datos['paquetes_json'] or '[]')
+        locales = paquetes_locales(config, datos['cliente'], solicitud)
+        ids_esperados = {clave_segura(p) for p in esperados}
+        ids_locales = {p.stem for p in locales}
+        if locales and (ids_esperados and ids_esperados <= ids_locales or datos['recuperado'] and not ids_esperados):
+            self._elegir_descarga(datos)
+            return
+        if datos['estado'] in (4, 5, 6):
+            self._estado_lbl.configure(text='La solicitud no tiene paquetes descargables.')
+            return
+        # Recuperar desde el SAT si aún no se bajó, o si es una solicitud anterior
+        # a la incorporación de la caché de catorce días.
+        credenciales = None
+        try:
+            credenciales = self._credenciales()
+        except ErrorDescargaSAT:
+            pass
+        def trabajo():
+            if credenciales:
+                fiel = CredencialEFirma.cargar(*credenciales)
+            else:
+                fiel = cargar_firma(config, datos['cliente'], datos['rfc'])
+            if fiel.rfc != datos['rfc']:
+                raise ErrorDescargaSAT('La e.firma no corresponde a esta solicitud.')
+            sat = ClienteDescargaSAT(fiel)
+            try:
+                resultado = procesar_solicitud(sat, self.app.db_path, datos, config)
+                if resultado.respuesta.estado != 3:
+                    return False
+                with Catalogo(self.app.db_path) as cat:
+                    actual = dict(cat.obtener_solicitud_descarga(solicitud))
+                for paquete in json.loads(actual['paquetes_json'] or '[]'):
+                    existentes = {p.stem for p in paquetes_locales(config, datos['cliente'], solicitud)}
+                    if clave_segura(paquete) not in existentes:
+                        conservar_paquete(sat.descargar_paquete(datos['rfc'], paquete), config,
+                                          datos['cliente'], solicitud, paquete)
+                return bool(paquetes_locales(config, datos['cliente'], solicitud))
+            finally:
+                sat.cerrar()
+        def presentar(disponible):
+            self.al_mostrar()
+            if disponible:
+                self._elegir_descarga(datos)
+            else:
+                self._estado_lbl.configure(text='El SAT todavía no entrega paquetes para esta solicitud. Puedes revisar su estado más tarde.')
+        self.app.ejecutar(trabajo, presentar, 'Preparando paquetes de la solicitud', al_error=self._presentar_error)
+        self._password.set('')
+
+    def _elegir_descarga(self, datos):
+        dialogo = ctk.CTkToplevel(self)
+        dialogo.title('Bajar solicitud SAT')
+        dialogo.configure(fg_color=th.FONDO)
+        resp.ajustar_dialogo(dialogo, self, 390, 220, (350, 210))
+        dialogo.transient(self.winfo_toplevel())
+        ctk.CTkLabel(dialogo, text='Guardar paquetes de esta solicitud', font=(th.FUENTE, th.TAM_H3, 'bold')).pack(padx=16, pady=(20, 8))
+        ctk.CTkLabel(dialogo, text='Elige el archivo ZIP o una carpeta para los XML.', wraplength=350, text_color=th.TEXTO_SECUNDARIO).pack(padx=16, pady=(0, 12))
+        def guardar(xml):
+            if xml:
+                destino = filedialog.askdirectory(parent=dialogo, title='Carpeta para los XML')
+            else:
+                destino = filedialog.asksaveasfilename(parent=dialogo, title='Guardar ZIP',
+                                                      initialfile=f"{datos['id_sat']}.zip", defaultextension='.zip',
+                                                      filetypes=[('Paquetes ZIP', '*.zip')])
+            if not destino:
+                return
+            dialogo.destroy()
+            def trabajo():
+                paquetes = paquetes_locales(Config(), datos['cliente'], datos['id_sat'])
+                exportar_paquetes(paquetes, Path(destino), xml=xml)
+            self.app.ejecutar(trabajo, lambda _: self._estado_lbl.configure(text=f'Guardado en: {destino}'),
+                              'Guardando descarga SAT', al_error=self._presentar_error)
+        BotonPrimario(dialogo, 'Guardar ZIP', lambda: guardar(False)).pack(padx=16, pady=(0, 8), fill='x')
+        BotonSecundario(dialogo, 'Extraer XML', lambda: guardar(True)).pack(padx=16, fill='x')
+        dialogo.after(80, dialogo.grab_set)
+
+    def _dibujar_bajar(self, _evento=None):
+        lienzo = self._tabla.sheet.MT
+        lienzo.delete('conxml_bajar')
+        columnas = lienzo.col_positions
+        if len(columnas) < 8:
+            return
+        x = (columnas[6] + columnas[7]) / 2
+        filas = lienzo.row_positions
+        inicio, final = lienzo.canvasy(0), lienzo.canvasy(lienzo.winfo_height())
+        for fila, solicitud in enumerate(self._tabla.items_pagina()):
+            if solicitud not in self._descargables or fila + 1 >= len(filas):
+                continue
+            y = (filas[fila] + filas[fila + 1]) / 2
+            if inicio <= y <= final:
+                lienzo.create_image(x, y, image=self._icono_bajar, tags=('conxml_bajar',))

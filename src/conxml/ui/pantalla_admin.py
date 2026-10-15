@@ -53,6 +53,7 @@ from conxml.ui.iconos import icono
 from conxml.ui.widgets import (
     BotonPrimario,
     BotonSecundario,
+    BotonIcono,
     Encabezado,
     BarraAdaptable,
     texto_adaptable,
@@ -301,11 +302,15 @@ def aplicar_estilo_tabla(tabla: ttk.Treeview) -> None:
     tabla.tag_configure("impar", background=th.FONDO)
 
 
-def auto_ajustar_columnas(tabla: ttk.Treeview, min_ancho: int = 70, max_ancho: int = 420) -> None:
-    """Ajusta automáticamente el ancho de cada columna al contenido más largo."""
+def auto_ajustar_columnas(tabla: ttk.Treeview, min_ancho: int = 70, max_ancho: int = 360) -> None:
+    """Ajusta las columnas al texto de toda la vista, con un límite de ancho."""
     try:
-        font = tkfont.Font(family=th.FUENTE, size=th.TAM_TABLA)
-        font_bold = tkfont.Font(family=th.FUENTE, size=th.TAM_TABLA)
+        if isinstance(tabla, TablaVisor):
+            font = tkfont.Font(root=tabla, font=tabla.sheet.ops.table_font)
+            font_bold = tkfont.Font(root=tabla, font=tabla.sheet.ops.header_font)
+        else:
+            font = tkfont.Font(root=tabla, family=th.FUENTE, size=th.TAM_TABLA)
+            font_bold = tkfont.Font(root=tabla, family=th.FUENTE, size=th.TAM_TABLA, weight="bold")
     except Exception:
         return
 
@@ -318,14 +323,21 @@ def auto_ajustar_columnas(tabla: ttk.Treeview, min_ancho: int = 70, max_ancho: i
     for col in columnas:
         header_text = tabla.heading(col)["text"]
         w_max = font_bold.measure(str(header_text)) + 24
-        for item in items[:100]:
+        medidos = set()
+        for item in items:
+            if w_max >= max_ancho:
+                break
             val = tabla.set(item, col)
-            if val:
-                w = font.measure(str(val)) + 18
+            if val is not None and val != "":
+                texto = str(val)
+                if texto in medidos:
+                    continue
+                medidos.add(texto)
+                w = max(font.measure(linea) for linea in texto.split("\n")) + 24
                 if w > w_max:
                     w_max = w
         ancho_final = max(min_ancho, min(w_max, max_ancho))
-        tabla.column(col, width=ancho_final, stretch=False)
+        tabla.column(col, width=ancho_final, anchor="center", stretch=False)
 
 
 # ── Componentes de Resumen de Totales ─────────────────────────────────────────
@@ -761,28 +773,32 @@ class PantallaAdministracion(ctk.CTkFrame):
             self._totales_panel = PanelResumenTotales(contenedor, al_colapsar=self._al_colapsar_totales)
         self._totales_panel.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(12, 0))
 
-        # Panel compacto de búsqueda. Los campos se aplican automáticamente
-        # al escribir, sin botones que consuman espacio ni una fila duplicada
-        # dentro de la tabla.
+        # Búsqueda y herramientas en una barra que refluye según el ancho.
+        # Los filtros se aplican automáticamente al escribir.
         barra_tabla = ctk.CTkFrame(
             contenedor, fg_color=th.FONDO_ENTRADA, corner_radius=th.RADIO_TARJETA
         )
         barra_tabla.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(12, 0))
         self._barra_tabla = barra_tabla
-        barra_tabla.columnconfigure(1, weight=1)
+        barra_tabla.columnconfigure(0, weight=1)
+        marco_acciones = BarraAdaptable(barra_tabla)
+        marco_acciones.grid(row=0, column=0, sticky="ew", padx=12, pady=(8, 6))
+        self._marco_acciones = marco_acciones
+        selector_busqueda = ctk.CTkFrame(marco_acciones, fg_color="transparent")
         self._filtros = {}
         self._filtro_after = None
         self._criterio_busqueda = tk.StringVar(value="UUID")
         ctk.CTkLabel(
-            barra_tabla, text="Buscar por", text_color=th.TEXTO,
+            selector_busqueda, text="Buscar por", text_color=th.TEXTO,
             font=(th.FUENTE, th.TAM_BODY, "bold"), anchor="w",
-        ).grid(row=0, column=0, padx=(14, 10), pady=(6, 0), sticky="w")
+        ).grid(row=0, column=0, padx=(0, 10), sticky="w")
         self._combo_busqueda = ctk.CTkComboBox(
-            barra_tabla, variable=self._criterio_busqueda,
+            selector_busqueda, variable=self._criterio_busqueda,
             values=["UUID", "RFC", "Serie", "Folio", "Fecha", "Monto"],
             command=self._cambiar_criterio_busqueda, width=170, height=30,
         )
-        self._combo_busqueda.grid(row=0, column=1, padx=(0, 8), pady=(6, 0), sticky="w")
+        self._combo_busqueda.grid(row=0, column=1, sticky="w")
+        marco_acciones.agregar(selector_busqueda)
         campos = ctk.CTkFrame(barra_tabla, fg_color="transparent")
         self._campos_busqueda = campos
         campos.grid(row=1, column=0, columnspan=3, sticky="ew", padx=12, pady=(0, 8))
@@ -827,10 +843,9 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._cambiar_criterio_busqueda("UUID", programar=False)
 
         self._lbl_resultados = ctk.CTkLabel(
-            barra_tabla, text="0 registros", text_color=th.TEXTO_SECUNDARIO,
+            marco_acciones, text="0 registros", text_color=th.TEXTO_SECUNDARIO,
             font=(th.FUENTE, th.TAM_NOTA),
         )
-        self._lbl_resultados.grid(row=0, column=2, padx=(8, 14), pady=(6, 0), sticky="e")
 
         self._seg_vista = None
         self._combo_vista = None
@@ -899,19 +914,9 @@ class PantallaAdministracion(ctk.CTkFrame):
         self._scroll_y = self._tabla.sheet.yscroll
         self._scroll_x = self._tabla.sheet.xscroll
 
-        # Fila de acciones inferiores
-        marco_acciones = BarraAdaptable(contenedor)
-        marco_acciones.grid(
-            row=5,
-            column=0, columnspan=3, sticky="ew", pady=(16, 0),
-        )
-        self._marco_acciones = marco_acciones
-
+        # Herramientas junto al selector de búsqueda, antes de la tabla.
         self._btn_validar = BotonPrimario(marco_acciones, "Validar estatus", self._validar)
         marco_acciones.agregar(self._btn_validar)
-
-        self._btn_exportar = BotonSecundario(marco_acciones, "Exportar Excel", self._exportar)
-        marco_acciones.agregar(self._btn_exportar)
 
         self._force = tk.BooleanVar(value=False)
         self._chk_force = ctk.CTkCheckBox(
@@ -927,28 +932,28 @@ class PantallaAdministracion(ctk.CTkFrame):
         )
         marco_acciones.agregar(self._chk_force)
 
-        self._btn_columnas = BotonSecundario(marco_acciones, "", self._abrir_columnas,
+        self._btn_exportar = BotonIcono(
+            marco_acciones, "Exportar Excel", self._exportar,
+            image=icono("excel", th.TEXTO),
+        )
+        marco_acciones.agregar(self._btn_exportar)
+
+        self._btn_columnas = BotonIcono(marco_acciones, "Columnas visibles", self._abrir_columnas,
                                                image=icono("columnas", th.TEXTO))
-        self._btn_columnas.configure(width=32)
         marco_acciones.agregar(self._btn_columnas)
 
-        self._btn_ampliar = BotonSecundario(marco_acciones, "Ampliar tabla", self._alternar_tabla_ampliada)
+        self._btn_ampliar = BotonIcono(
+            marco_acciones, "Ampliar tabla", self._alternar_tabla_ampliada,
+            image=icono("ampliar", th.TEXTO),
+        )
         marco_acciones.agregar(self._btn_ampliar)
         self.botones = [self._btn_validar, self._btn_exportar]
 
-        barra_pdf = BarraAdaptable(contenedor)
-        barra_pdf.grid(
-            row=6,
-            column=0, columnspan=3, sticky='ew', pady=(8, 0),
-        )
         for texto, comando in [('PDF selección (ZIP)', self._pdf_seleccion), ('PDF vista (ZIP)', self._pdf_vista)]:
-            boton = BotonSecundario(barra_pdf, texto, comando)
-            barra_pdf.agregar(boton)
+            boton = BotonSecundario(marco_acciones, texto, comando)
+            marco_acciones.agregar(boton)
             self.botones.append(boton)
-        barra_pdf.agregar(ctk.CTkLabel(
-            barra_pdf, text="Ctrl+C / ⌘C: copiar · Doble clic: PDF o ordenar cabecera", wraplength=320,
-            font=(th.FUENTE, th.TAM_NOTA), text_color=th.TEXTO_SECUNDARIO))
-        self._barra_pdf = barra_pdf
+        marco_acciones.agregar(self._lbl_resultados)
 
         # Resumen de operaciones
         self._resumen = ResumenOperacion(contenedor)
@@ -1091,11 +1096,7 @@ class PantallaAdministracion(ctk.CTkFrame):
         anterior_alto = self._alto_compacto
         self._ancho_compacto = ancho_compacto
         self._alto_compacto = alto_compacto
-        if ancho_compacto:
-            self._lbl_resultados.grid_remove()
-        else:
-            self._lbl_resultados.grid()
-        self._marco_acciones.grid_configure(pady=(8 if alto_compacto else 16, 0))
+        self._marco_acciones.grid_configure(pady=(6 if alto_compacto else 8, 6))
         if self.modo == MODO_PAGOS:
             self._barra_tabla.grid_configure(pady=(6 if alto_compacto else 12, 0))
         # Márgenes compactos para dar aire a la tabla en laptops.
@@ -1136,20 +1137,22 @@ class PantallaAdministracion(ctk.CTkFrame):
             self._restaurar_sidebar = self.app.sidebar_visible
             if self._restaurar_sidebar:
                 self.app.alternar_sidebar()
-            for widget in (self._encabezado, self._totales_panel, self._barra_pdf):
+            for widget in (self._encabezado, self._totales_panel):
                 widget.grid_remove()
             self._contenedor.pack_configure(padx=8, pady=8)
-            self._btn_ampliar.configure(text="Restaurar tabla")
+            self._btn_ampliar.configure(image=icono("restaurar", th.TEXTO))
+            self._btn_ampliar.descripcion = "Restaurar tabla"
             self._tabla.focus_set()
         else:
-            for widget in (self._encabezado, self._totales_panel, self._barra_pdf):
+            for widget in (self._encabezado, self._totales_panel):
                 widget.grid()
             if self._restaurar_sidebar and not self.app.sidebar_visible:
                 self.app.alternar_sidebar()
             self._restaurar_sidebar = False
             compacto = self._ancho_compacto or self._alto_compacto
             self._contenedor.pack_configure(padx=8 if compacto else 16, pady=8 if compacto else 16)
-            self._btn_ampliar.configure(text="Ampliar tabla")
+            self._btn_ampliar.configure(image=icono("ampliar", th.TEXTO))
+            self._btn_ampliar.descripcion = "Ampliar tabla"
         self._aplicar_detalles(self.app.detalles_visibles)
 
     def al_ocultar(self) -> None:
@@ -1276,7 +1279,7 @@ class PantallaAdministracion(ctk.CTkFrame):
                 clave, text=texto,
                 command=lambda c=clave: self._ordenar_columna(c),
             )
-            self._tabla.column(clave, width=ancho, anchor="w", stretch=False)
+            self._tabla.column(clave, width=ancho, anchor="center", stretch=False)
 
     def _programar_carga_filtrada(self) -> None:
         if self._filtro_after is not None:

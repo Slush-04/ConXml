@@ -39,6 +39,22 @@ def icono(nombre: str, color: str, tamano: int = 18) -> ctk.CTkImage:
         caja((3, 4, 21, 20))
         for x in (9, 15):
             linea([(x, 4), (x, 20)])
+    elif nombre == "excel":
+        caja((8, 3, 21, 21))
+        for y in (9, 15):
+            linea([(13, y), (21, y)])
+        linea([(15, 3), (15, 21)])
+        dibujo.rectangle((2*escala, 7*escala, 12*escala, 17*escala), fill=color)
+        dibujo.line((4*escala, 9*escala, 10*escala, 15*escala), fill="#FFFFFF", width=2*escala)
+        dibujo.line((10*escala, 9*escala, 4*escala, 15*escala), fill="#FFFFFF", width=2*escala)
+    elif nombre == "ampliar":
+        for puntos in ([(9, 3), (3, 3), (3, 9)], [(15, 3), (21, 3), (21, 9)],
+                       [(3, 15), (3, 21), (9, 21)], [(15, 21), (21, 21), (21, 15)]):
+            linea(puntos)
+    elif nombre == "restaurar":
+        for puntos in ([(3, 9), (9, 9), (9, 3)], [(15, 3), (15, 9), (21, 9)],
+                       [(3, 15), (9, 15), (9, 21)], [(15, 21), (15, 15), (21, 15)]):
+            linea(puntos)
     elif nombre == "menu":
         for y in (6, 12, 18):
             linea([(4, y), (20, y)])

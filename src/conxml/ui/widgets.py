@@ -116,6 +116,53 @@ class BotonVidrio(BotonPrimario):
     pass
 
 
+class BotonIcono(BotonSecundario):
+    """Acción compacta con una descripción visible al pasar el cursor."""
+
+    def __init__(self, parent, descripcion, comando=None, **kwargs):
+        super().__init__(parent, "", comando, **kwargs)
+        self.configure(width=32)
+        self.descripcion = descripcion
+        self._ayuda = None
+        self._ayuda_pendiente = None
+        self.bind("<Enter>", self._programar_ayuda, add="+")
+        self.bind("<Leave>", self._ocultar_ayuda, add="+")
+        self.bind("<Button-1>", self._ocultar_ayuda, add="+")
+
+    def _programar_ayuda(self, _event=None):
+        self._ocultar_ayuda()
+        self._ayuda_pendiente = self.after(350, self._mostrar_ayuda)
+
+    def _mostrar_ayuda(self):
+        self._ayuda_pendiente = None
+        ventana = self.winfo_toplevel()
+        self._ayuda = ctk.CTkLabel(
+            ventana, text=self.descripcion, fg_color=th.TEXTO,
+            text_color="#FFFFFF", corner_radius=6,
+            font=(th.FUENTE, th.TAM_NOTA), padx=10, pady=4,
+        )
+        self._ayuda.update_idletasks()
+        escala = resp.escalado_widget(ventana)
+        x = self.winfo_rootx() - ventana.winfo_rootx()
+        y = self.winfo_rooty() - ventana.winfo_rooty() + self.winfo_height() + 6
+        x = max(0, min(x, ventana.winfo_width() - self._ayuda.winfo_reqwidth()))
+        y = max(0, min(y, ventana.winfo_height() - self._ayuda.winfo_reqheight()))
+        self._ayuda.place(x=x / escala, y=y / escala)
+        self._ayuda.lift()
+
+    def _ocultar_ayuda(self, _event=None):
+        if self._ayuda_pendiente is not None:
+            self.after_cancel(self._ayuda_pendiente)
+            self._ayuda_pendiente = None
+        if self._ayuda is not None:
+            self._ayuda.destroy()
+            self._ayuda = None
+
+    def destroy(self):
+        self._ocultar_ayuda()
+        super().destroy()
+
+
 class Insignia(ctk.CTkLabel):
     """Insignia / Badge cápsula."""
 

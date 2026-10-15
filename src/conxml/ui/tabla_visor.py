@@ -15,7 +15,7 @@ from conxml.ui import theme as th
 class TablaVisor(tk.Frame):
     TAM_PAGINA = 150
 
-    def __init__(self, master, columns):
+    def __init__(self, master, columns, *, paginacion_automatica=False, seleccion_por_filas=False):
         super().__init__(master, bg=th.FONDO_TABLA)
         self._columnas = list(columns)
         self._visibles = list(columns)
@@ -24,6 +24,7 @@ class TablaVisor(tk.Frame):
         self._filas = {}
         self._orden = []
         self._pagina = 0
+        self._paginacion_automatica = paginacion_automatica
         self._siguiente_id = 0
         self._orden_columna = None
         self._orden_desc = False
@@ -37,7 +38,7 @@ class TablaVisor(tk.Frame):
             show_row_index=False, show_top_left=False,
             show_default_header_for_empty=False,
             default_row_height=27, default_header_height=30,
-            header_align='w', align='w', table_wrap='', header_wrap='',
+            header_align='center', align='center', table_wrap='', header_wrap='',
             show_vertical_grid=True, table_grid_fg='#E4EAF1',
             header_grid_fg='#DDE5EF', header_border_fg='#DDE5EF',
             display_selected_fg_over_highlights=False,
@@ -63,10 +64,17 @@ class TablaVisor(tk.Frame):
                                    'column_width_resize',
                                    'right_click_popup_menu')
         self.sheet.grid(row=0, column=0, sticky='nsew')
+        if seleccion_por_filas:
+            self.sheet.disable_bindings('single_select', 'drag_select', 'column_select',
+                                        'shift_select', 'ctrl_select', 'select_all', 'arrowkeys')
+            self.sheet.MT.bind('<Button-1>', self._seleccionar_fila)
+            self.sheet.MT.bind('<Up>', lambda e: self._mover_fila(-1))
+            self.sheet.MT.bind('<Down>', lambda e: self._mover_fila(1))
         self._activar_desplazamiento()
         self.sheet.CH.bind('<Double-1>', self.ordenar_cabecera, add='+')
         self.sheet.MT.bind('<Command-c>', lambda e: self.sheet.copy(e), add='+')
         barra = ctk.CTkFrame(self, fg_color=th.FONDO_ENTRADA, corner_radius=0)
+        self._barra_paginacion = barra
         barra.grid(row=1, column=0, sticky='ew')
         estilo_boton = dict(width=96, height=28, corner_radius=6,
                             fg_color=th.FONDO_TABLA, hover_color=th.PRIMARIO_FONDO,
@@ -83,6 +91,25 @@ class TablaVisor(tk.Frame):
                                       command=lambda: self.cambiar_pagina(1), **estilo_boton)
         self._siguiente.pack(side='right', padx=8, pady=6)
         self._programar()
+
+    def _seleccionar_fila(self, event):
+        fila = self.sheet.identify_row(event, allow_end=False)
+        if fila is not None and fila < len(self.items_pagina()):
+            self.sheet.select_row(fila)
+            self.sheet.MT.focus_set()
+        else:
+            self.sheet.deselect('all')
+        return 'break'
+
+    def _mover_fila(self, delta):
+        ids = self.items_pagina()
+        if ids:
+            seleccion = self.selection()
+            indice = ids.index(seleccion[0]) if seleccion else (-1 if delta > 0 else len(ids))
+            fila = max(0, min(len(ids) - 1, indice + delta))
+            self.sheet.select_row(fila)
+            self.sheet.see(row=fila)
+        return 'break'
 
     def _activar_desplazamiento(self):
         """Dirige la rueda al eje de la tabla bajo el cursor.
@@ -172,17 +199,16 @@ class TablaVisor(tk.Frame):
         self._estado.configure(text=f'{inicio}–{inicio + len(ids) - 1 if ids else 0} de {len(self._orden):,} · Página {self._pagina + 1} de {paginas}')
         self._anterior.configure(state='normal' if self._pagina else 'disabled')
         self._siguiente.configure(state='normal' if self._pagina + 1 < paginas else 'disabled')
+        if self._paginacion_automatica and paginas == 1:
+            self._barra_paginacion.grid_remove()
+        else:
+            self._barra_paginacion.grid()
 
     def _aplicar_lectura(self, ids):
         """Formato visual sin modificar los valores copiados o exportados."""
-        importes = {'subtotal', 'descuento', 'total', 'monto', 'pagado',
-                    'saldo_pendiente', 'saldo_insoluto', 'saldo_anterior',
-                    'total_factura', 'imp_saldo_ant', 'imp_pagado', 'imp_saldo_insoluto'}
         self.sheet.dehighlight_all(redraw=False)
         for indice, clave in enumerate(self._columnas):
-            es_importe = clave in importes or clave.startswith(
-                ('total_', 'monto_', 'iva_', 'isr_', 'ieps_', 'ret_'))
-            self.sheet.align_columns(indice, align='e' if es_importe else 'w', redraw=False)
+            self.sheet.align_columns(indice, align='center', redraw=False)
             if clave == 'estatus':
                 for fila, iid in enumerate(ids):
                     valor = str(self._filas[iid]['values'][indice]).strip().casefold()
@@ -236,6 +262,19 @@ class TablaVisor(tk.Frame):
             self._programar()
         opciones = {'width': self._anchos[column]}
         return opciones[option] if option else opciones
+
+    def ajustar_anchos(self, anchos):
+        """Redimensiona columnas sin reconstruir los datos ni la selección."""
+        cambio = False
+        for columna, ancho in anchos.items():
+            if self._anchos[columna] == ancho:
+                continue
+            self._anchos[columna] = ancho
+            if columna in self._visibles:
+                self.sheet.column_width(self._visibles.index(columna), ancho, redraw=False)
+            cambio = True
+        if cambio:
+            self.sheet.refresh()
 
     def insert(self, parent, index, *, values=(), tags=(), iid=None):
         self._siguiente_id += 1
