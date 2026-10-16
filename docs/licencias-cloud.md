@@ -3,7 +3,8 @@
 La integración se activa **solo en una edición compilada de prueba**. El código de
 este checkout y las ediciones anteriores quedan exentos. No hay una política
 comercial/perpetua ni un plazo de prueba fijo: el administrador elige los días al
-crear cada licencia (1–365) y las plazas (1–10). No se ha desplegado ningún servicio.
+crear cada licencia (1–365) y las plazas (1–10). El servicio del piloto está desplegado y activo en
+`https://conxml-licensing.slush04-conxml.workers.dev`.
 
 ## Preparar una edición de prueba
 
@@ -133,8 +134,8 @@ vencimiento con reloj congelado, reinicios, retroceso/futuro, fallos de keyring/
 una sesión por instalación, CLI y espera de operaciones/diálogos. El servicio usa
 D1 local para verificar plazas, reintentos, cambio de licencia y concurrencia.
 
-Siguen pendientes el despliegue con una cuenta/URL/llaves reales, política operativa
-de retención y respaldos D1, auditoría ampliada de transferencias, recuperación de
+El despliegue y las credenciales reales del piloto ya están configurados. Siguen
+pendientes la política de retención y respaldos D1, auditoría ampliada de transferencias, recuperación de
 credenciales y reasignación de equipos. Mensajes cloud y ampliación de plazo siguen
 fuera de esta API. Antes de publicar se necesita probar el instalador Windows real
 (con/sin red, cambio de reloj, cierre durante una escritura, actualización y
@@ -153,4 +154,25 @@ resistencia a modificar el ejecutable o restaurar todo el sistema/keyring.
   `CTkScrollbar.set/_draw/update_idletasks` en la prueba de diseño a 900×650.
   Ese código de scroll tenía cambios previos a esta tarea y no se modificó aquí.
 - El diálogo nuevo de activación sí se abrió y comprobó con Tk real en una prueba.
-  No se generó ni certificó un instalador Windows y no se desplegó el Worker.
+  En esta comprobación inicial todavía no se había generado el instalador Windows
+  ni desplegado el Worker; ver el avance posterior siguiente.
+
+## Avance del piloto, 16 de octubre de 2026
+
+La compilación 0.2.32 pasó 372 pruebas y la comprobación de Setup, cierre, reemplazo,
+versión, GUI y conservación de datos en Windows:
+https://github.com/Slush-04/ConXml/actions/runs/38910662925.
+La política de prueba se comprobó dentro de los archivos GUI y CLI, y la CLI rechazó
+una operación sin activación antes de crear su catálogo.
+
+La API está activa y se verificó contra el servicio real con autenticación
+administrativa, activación, firma con la clave pública incluida en el instalador,
+bloqueo/desbloqueo y revocación firmada. La licencia técnica usada se revocó al
+terminar. Los días para interesados se eligen en el Administrador; el día usado por
+esa comprobación interna no define la duración del piloto. No se enviaron datos fiscales.
+
+Para empezar una prueba: Administrador → Licencias y pruebas → Actualizar lista →
+Crear prueba. Elegir etiqueta, días y equipos; copiar el código en su única
+presentación e introducirlo en la edición Windows de prueba. No hace falta
+recompilar para usar la API activada. Falta validar manualmente ese recorrido
+completo en Windows con/sin red y con cambio de reloj antes de ampliar la distribución.
