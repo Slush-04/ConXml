@@ -11,6 +11,14 @@ on:
         description: 'ID de la compilación Windows que ya descargaste y revisaste'
         required: true
         type: string
+      release_title:
+        description: 'Título visible de la versión'
+        required: true
+        type: string
+      release_notes:
+        description: 'Descripción de mejoras para los usuarios'
+        required: true
+        type: string
 permissions:
   actions: read
   contents: write
@@ -66,10 +74,15 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          CONXML_RELEASE_TITLE: ${{ inputs.release_title }}
+          CONXML_RELEASE_NOTES: ${{ inputs.release_notes }}
         run: |
           $tag = "v$env:CONXML_RELEASE_VERSION"
           $exe = "build-artifact/installer/ConXml-Setup-$env:CONXML_RELEASE_VERSION-windows-x64.exe"
           $zip = "build-artifact/ConXml-$env:CONXML_RELEASE_VERSION-windows-x64.zip"
+          if ([string]::IsNullOrWhiteSpace($env:CONXML_RELEASE_TITLE) -or [string]::IsNullOrWhiteSpace($env:CONXML_RELEASE_NOTES)) { throw "Faltan el título o las mejoras de la versión." }
+          $notesFile = Join-Path $env:RUNNER_TEMP 'conxml-release-notes.md'
+          [System.IO.File]::WriteAllText($notesFile, $env:CONXML_RELEASE_NOTES, [System.Text.UTF8Encoding]::new($false))
           $releasesBefore = gh api "repos/${{ github.repository }}/releases?per_page=100" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw "No se pudieron consultar las Releases." }
           $existingRelease = $releasesBefore | Where-Object { $_.tag_name -eq $tag } | Select-Object -First 1
@@ -77,7 +90,7 @@ jobs:
             if (-not $existingRelease.draft) { throw "La versión ya está publicada; no sobrescribirla." }
             if ($existingRelease.target_commitish -ne $env:CONXML_BUILD_SHA) { throw "El borrador pertenece a otra compilación." }
           } else {
-            gh release create $tag $exe "$exe.sha256" $zip "$zip.sha256" --target $env:CONXML_BUILD_SHA --draft --title "ConXml $env:CONXML_RELEASE_VERSION" --notes "Instalador y paquete de actualización directa Windows x64. Conserva los datos locales."
+            gh release create $tag $exe "$exe.sha256" $zip "$zip.sha256" --target $env:CONXML_BUILD_SHA --draft --title "$env:CONXML_RELEASE_TITLE" --notes-file $notesFile
             if ($LASTEXITCODE -ne 0) { throw "Falló la carga de la versión." }
           }
           if ($LASTEXITCODE -ne 0) { throw "No se pudieron consultar las Releases." }
@@ -96,5 +109,5 @@ jobs:
           $latest = gh api "repos/${{ github.repository }}/releases/latest" --jq .tag_name 2>$null
           $makeLatest = 'true'
           if ($LASTEXITCODE -eq 0 -and [version]$latest.TrimStart('v') -gt [version]$env:CONXML_RELEASE_VERSION) { $makeLatest = 'false' }
-          gh api --method PATCH "repos/${{ github.repository }}/releases/$releaseId" -F draft=false -f "make_latest=$makeLatest" | Out-Null
+          gh api --method PATCH "repos/${{ github.repository }}/releases/$releaseId" -F draft=false -f "make_latest=$makeLatest" -f "name=$env:CONXML_RELEASE_TITLE" -f "body=$env:CONXML_RELEASE_NOTES" | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "No se pudo publicar." }
