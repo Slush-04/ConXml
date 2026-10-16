@@ -150,6 +150,7 @@ def test_retencion_desde_creacion_y_conserva_boveda(config, tmp_path):
 def test_programador_mac_sin_secretos(config, tmp_path, monkeypatch):
     import conxml.sat.programador_sistema as sistema
     monkeypatch.setattr(sistema.sys, 'platform', 'darwin')
+    monkeypatch.setattr(sistema.os, 'getuid', lambda: 501, raising=False)
     monkeypatch.setattr(sistema.Path, 'home', lambda: tmp_path / 'home')
     ejecutar = Mock(); monkeypatch.setattr(sistema, '_ejecutar', ejecutar)
     sistema.instalar(config)
@@ -158,7 +159,7 @@ def test_programador_mac_sin_secretos(config, tmp_path, monkeypatch):
     assert datos['StartInterval'] == 60 and datos['RunAtLoad']
     assert str(config.base) in datos['ProgramArguments']
     assert 'password' not in ruta.read_text()
-    assert ejecutar.call_args.args[0][1] == 'bootstrap'
+    assert ejecutar.call_args.args[0] == ['launchctl', 'bootstrap', 'gui/501', str(ruta)]
     sistema.desinstalar(config)
     assert not ruta.exists()
 

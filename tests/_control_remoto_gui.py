@@ -15,6 +15,11 @@ def application():
     except tk.TclError:
         pytest.skip("Sin pantalla disponible")
     root.report_callback_exception = lambda *args: pytest.fail(str(args))
+    # CTk difiere el primer mapeo en Windows. La vista de control ignora por
+    # diseño una raíz withdrawn; probarla después de mostrar la aplicación.
+    root.deiconify()
+    root.update()
+    assert root.state() != 'withdrawn'
     yield root
     root.destroy()
 
