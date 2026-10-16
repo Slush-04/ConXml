@@ -91,7 +91,9 @@ class Actualizaciones:
             self.check(manual=True)
             return
         release = self.release
-        if not messagebox.askyesno('Nueva versión', f'ConXml {release.version} disponible ({release.size / 1024**2:.1f} MB).\n¿Descargar la actualización?', parent=self.app):
+        notes = getattr(release, 'notes', '')
+        details = f'\n\nMejoras de esta versión:\n{notes}' if notes else ''
+        if not messagebox.askyesno('Nueva versión', f'ConXml {release.version} disponible ({release.size / 1024**2:.1f} MB).{details}\n\n¿Descargar la actualización?', parent=self.app):
             return
         self._mostrar_progreso('Descargando actualización', f'Preparando descarga de ConXml {release.version}…')
         iniciado = self.app.ejecutar(lambda progreso: self.updater.download(release, progreso),
@@ -160,7 +162,9 @@ class Actualizaciones:
         if self.updater.demo or sys.platform != 'win32' or not getattr(sys, 'frozen', False):
             messagebox.showinfo('Prueba de actualización', f'Descarga y SHA-256 comprobados:\n{path}\n\nEn desarrollo/Mac no se ejecutan reemplazos de binarios Windows.', parent=self.app)
             return
-        if not messagebox.askyesno('Instalar actualización', f'Descarga comprobada. Se guardará un respaldo de tus datos y ConXml se actualizará automáticamente a la versión {release.version}.\n¿Continuar?', parent=self.app):
+        notes = getattr(release, 'notes', '')
+        details = f'\n\nMejoras de esta versión:\n{notes}' if notes else ''
+        if not messagebox.askyesno('Instalar actualización', f'Descarga comprobada. Se guardará un respaldo de tus datos y ConXml se actualizará automáticamente a la versión {release.version}.{details}\n\n¿Continuar?', parent=self.app):
             return
         self.app.guardar_sesion()
         self._mostrar_progreso('Preparando actualización', 'Guardando un respaldo de tus datos…', indeterminado=True)
