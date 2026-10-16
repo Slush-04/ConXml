@@ -45,3 +45,50 @@ def test_conteo_estatus_vacio(tmp_path):
     }
     assert catalogo.clientes() == []
     catalogo.close()
+
+
+def test_resumen_aisla_clientes_e_incluye_uuid_compartidos(tmp_path):
+    from conxml.cfdi import parse_comprobante
+
+    with Catalogo(tmp_path / "catalogo.db") as cat:
+        importar_carpeta(cat, FIXTURES, "A")
+        compartido = parse_comprobante(FIXTURES / "ingreso_iva.xml")
+        cat.insert_comprobante("B", compartido)
+        cat.crear_cliente("VACIO", "Sin XML")
+        cat.asignar_estatus(compartido.uuid, "Vigente")
+        cat.conn.execute("UPDATE comprobantes SET estatus = '' WHERE tipo_comprobante = 'E'")
+        cat.registrar_error("ajeno.xml", "Error de otra importación")
+        cat.commit()
+
+        a, b, vacio = (cat.resumen_cliente(c) for c in ("A", "B", "VACIO"))
+        assert a["total"] == 8
+        assert b["total"] == 1
+        assert b["estatus"]["Vigente"] == 1
+        assert b["tipos"] == {"I": 1}
+        assert b["desde"] == b["hasta"] == compartido.fecha.isoformat()
+        assert b["ultima_validacion"]
+        assert a["estatus"]["Sin validar"] == 7
+        assert sum(a["estatus"].values()) == a["total"]
+        assert vacio["total"] == 0
+        assert vacio["desde"] is None
+        assert vacio["cliente"]["nombre"] == "Sin XML"
+        assert "errores" not in b
+
+
+def test_resumen_solicitudes_solo_pendientes_del_cliente(tmp_path):
+    with Catalogo(tmp_path / "catalogo.db") as cat:
+        cat.crear_cliente("A", "Cliente A")
+        for i, (cliente, estado, recuperado) in enumerate([
+            ("A", 1, False), ("A", 2, False), ("A", 3, False),
+            ("A", 3, True), ("A", 4, False), ("A", 5, False),
+            ("A", 6, False), ("B", 3, False),
+        ]):
+            cat.guardar_solicitud_descarga(
+                cliente=cliente, rfc="XAXX010101000", direccion="Recibidos",
+                fecha_inicial="2026-01-01", fecha_final="2026-01-31", tipo_comprobante="",
+                id_sat=str(i), cod_estatus="5000", estado=estado, mensaje="", recuperado=recuperado,
+            )
+        resumen = cat.resumen_cliente("A")
+        assert resumen["descargas_pendientes"] == 2
+        assert resumen["descargas_listas"] == 1
+        assert resumen["total"] == 0

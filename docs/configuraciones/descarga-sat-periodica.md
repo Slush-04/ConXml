@@ -1,9 +1,9 @@
 # Descarga SAT periódica
 
-La programación se configura por cliente en **Configuración → Descarga SAT periódica**. El botón **Configurar horarios** de Descargas SAT abre directamente esa sección.
+La programación y la autorización de la e.firma se administran por cliente en **Configuración → Descarga SAT periódica**.
 
 1. Registra el RFC del cliente.
-2. En Descargas SAT, selecciona su certificado `.cer`, llave `.key` y contraseña. Pulsa **Autorizar e.firma**. La contraseña se guarda en el almacén seguro del sistema, separado del catálogo y de las preferencias.
+2. En esa sección de Configuración, pulsa **Autorizar e.firma…** y selecciona el certificado `.cer`, la llave `.key` y su contraseña. La contraseña se guarda en el almacén seguro del sistema, separado del catálogo y de las preferencias.
 3. Configura dos horarios independientes: **Solicitar XML** y **Revisar y organizar XML**. Puedes elegir frecuencia diaria o semanal, intervalo, día y hora de 24 horas.
 4. Elige los días completos por solicitud, la dirección (emitidos, recibidos o ambos), el tipo CFDI y la zona horaria.
 5. Activa la programación para ese cliente y pulsa **Guardar programación**.

@@ -165,6 +165,8 @@ def ejecutar_pendientes(config: Config, ahora: datetime | None = None, *, firma=
     Un fallo de envío se conserva para revisión, sin reenviar automáticamente
     una petición que el SAT podría haber aceptado antes de cortar la conexión.
     """
+    from conxml.licensing_client import require_access
+    require_access()
     ahora = ahora or datetime.now(timezone.utc)
     resultados = []
     with bloqueo(config) as adquirido:
@@ -186,6 +188,7 @@ def ejecutar_pendientes(config: Config, ahora: datetime | None = None, *, firma=
                     instante = ocurrencia(plan, tarea, ahora)
                     if instante is None:
                         continue
+                    require_access()  # La tarea previa termina; no iniciar otra tras el vencimiento.
                     clave = instante.astimezone(timezone.utc).isoformat()
                     # INSERT OR IGNORE es la exclusión definitiva entre ejecuciones.
                     cur = cat.conn.execute(

@@ -43,6 +43,7 @@ data/catalogo.db
 # Secrets, keys, certificates, environment files
 *.env
 .env*
+conxml-monitoreo*.json
 *.key
 *.cer
 *.pfx
@@ -69,3 +70,15 @@ data/clientes/
 logs/
 data/cache/
 data/importaciones/
+
+# Estado de ejecución, respaldos y material privado de licencias
+.local/
+*.db-wal
+*.db-shm
+*.sqlite3-wal
+*.sqlite3-shm
+data/cache_sat/
+data/respaldos/
+*.private.jwk
+.dev.vars
+.dev.vars.*

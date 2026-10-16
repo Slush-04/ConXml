@@ -79,6 +79,8 @@ def construir_parser() -> argparse.ArgumentParser:
     run.add_argument("--force", action="store_true", help="Revalidar todo")
     run.add_argument("--db", type=Path, default=None)
 
+    license_p = subs.add_parser("licencia", help="Activar o consultar la licencia de prueba")
+    license_p.add_argument("accion", choices=("activar", "estado", "edicion"))
     return parser
 
 
@@ -89,6 +91,27 @@ def main(argv: list[str] | None = None) -> None:
     if args.comando is None:
         parser.print_help()
         return
+
+    from conxml.licensing_client import get_client, require_access
+    from conxml.licencias import LicenseError
+    try:
+        if args.comando == "licencia":
+            if args.accion == "edicion":
+                from conxml.distribucion import MODE
+                print(MODE)
+                return
+            client = get_client()
+            if not client.required:
+                print("Edición de desarrollo exenta de activación.")
+                return
+            if args.accion == "activar":
+                from getpass import getpass
+                client.sync(getpass("Código de licencia: ").strip())
+            print("Licencia válida." if client.allowed() else client.error)
+            return
+        require_access()
+    except LicenseError as exc:
+        parser.exit(2, f"Licencia de ConXml: {exc}\n")
 
     if args.comando == "import":
         with Catalogo(_db_path(args)) as catalogo:

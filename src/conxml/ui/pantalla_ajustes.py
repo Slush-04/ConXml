@@ -16,6 +16,7 @@ from conxml.respaldos import crear_respaldo, restaurar_respaldo
 from conxml.ui import theme as th
 from conxml.ui.scroll import PaginaDesplazable
 from conxml.ui.periodicidad_sat import ConfiguracionPeriodicaSAT
+from conxml.ui.monitoreo import ConfiguracionMonitoreo
 from conxml.ui.widgets import (
     BotonPrimario, BotonSecundario, Encabezado, PanelCard, ResumenOperacion,
     BarraAdaptable, texto_adaptable,
@@ -160,7 +161,10 @@ class PantallaAjustes(ctk.CTkFrame):
         self._cargar_destino_sat()
         self._periodicidad_sat = ConfiguracionPeriodicaSAT(contenedor, app)
         self._periodicidad_sat.pack(fill="x", pady=(0, 16))
-        self.botones.append(self._periodicidad_sat._btn_guardar)
+        self.botones.extend(self._periodicidad_sat.botones)
+        self._monitoreo = ConfiguracionMonitoreo(contenedor)
+        self._monitoreo.pack(fill="x", pady=(0, 16))
+        self.botones.extend(self._monitoreo.botones)
         for panel in (content_op, content_info, contenido, contenido_sat):
             for widget in panel.winfo_children():
                 if isinstance(widget, ctk.CTkLabel):
@@ -193,6 +197,7 @@ class PantallaAjustes(ctk.CTkFrame):
         self.actualizar_stats()
         self._cargar_destino_sat()
         self._periodicidad_sat.cargar()
+        self._monitoreo.load()
 
     def mostrar_periodicidad_sat(self) -> None:
         def desplazar():

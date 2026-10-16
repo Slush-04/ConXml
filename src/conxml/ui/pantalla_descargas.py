@@ -25,7 +25,7 @@ from conxml.sat.descarga_masiva import (
 from conxml.sat.seguimiento import ResultadoSeguimiento, procesar_solicitud
 from conxml.sat.archivo_solicitudes import conservar_paquete, exportar_paquetes, limpiar_vencidas, paquetes_locales
 from conxml.sat.periodicas import ejecutar_pendientes, planes
-from conxml.sat.autorizacion_periodica import autorizar, cargar_firma, revocar
+from conxml.sat.autorizacion_periodica import cargar_firma
 from conxml.ui import responsive as resp
 from conxml.ui.tabla_visor import TablaVisor
 from conxml.ui import theme as th
@@ -69,22 +69,6 @@ class PantallaDescargas(ctk.CTkFrame):
         self._cliente_lbl.pack(fill="x", padx=8, pady=(12, 4))
         self._destino_lbl = ctk.CTkLabel(self._contenedor, text="", anchor="w", justify="left", wraplength=650, text_color=th.TEXTO_SECUNDARIO)
         self._destino_lbl.pack(fill="x", padx=8, pady=(0, 8))
-
-        card_periodica = PanelCard(self._contenedor)
-        card_periodica.pack(fill='x', pady=(4, 8))
-        contenido_periodico = ctk.CTkFrame(card_periodica, fg_color='transparent')
-        contenido_periodico.pack(fill='x', padx=16, pady=12)
-        self._aviso_periodica = ctk.CTkLabel(contenido_periodico, text='Descarga periódica · configura los horarios en Ajustes.',
-                                           anchor='w', justify='left', wraplength=650, font=(th.FUENTE, th.TAM_BODY, 'bold'))
-        self._aviso_periodica.pack(fill='x')
-        texto_adaptable(self._aviso_periodica, contenido_periodico, margen=8)
-        acciones_periodicas = BarraAdaptable(contenido_periodico)
-        acciones_periodicas.pack(fill='x', pady=(8, 0))
-        self._btn_config_periodica = acciones_periodicas.agregar(BotonSecundario(
-            acciones_periodicas, 'Configurar horarios', self._abrir_periodicidad))
-        self._btn_autorizar_periodica = acciones_periodicas.agregar(BotonSecundario(
-            acciones_periodicas, 'Autorizar e.firma', self._autorizar_periodica))
-        acciones_periodicas.agregar(BotonSecundario(acciones_periodicas, 'Revocar autorización', self._revocar_periodica))
 
         formulario = PanelCard(self._contenedor)
         formulario.pack(fill="x", pady=(8, 10))
@@ -192,7 +176,7 @@ class PantallaDescargas(ctk.CTkFrame):
         texto_adaptable(nota_historial, historial, margen=32)
         texto_adaptable(self._cliente_lbl, self._contenedor)
         texto_adaptable(self._destino_lbl, self._contenedor)
-        self.botones = [self._btn_solicitar, self._btn_verificar, self._btn_seguimiento, self._btn_autorizar_periodica]
+        self.botones = [self._btn_solicitar, self._btn_verificar, self._btn_seguimiento]
         tk.Misc.bind(formulario, "<Configure>", self._al_redimensionar_formulario, add="+")
         if getattr(app, 'db_path', None):
             self._periodica_after = self.after(2_000, self._revision_periodica)
@@ -248,7 +232,6 @@ class PantallaDescargas(ctk.CTkFrame):
         destino = config.carpeta_zip_sat if config.modo_descarga_sat == "zip" else config.carpeta_boveda
         self._destino_lbl.configure(text=f"Guardado: {modo}\nDestino: {destino}\nPuedes cambiarlo en Configuración.")
         self._renderizar_historial(solicitudes)
-        self._mostrar_periodica()
 
     def _actualizar_aviso_seguimiento(self) -> None:
         activo = self._rfc_visible in self._firmas_activas
@@ -616,66 +599,6 @@ class PantallaDescargas(ctk.CTkFrame):
             if fila["id_sat"] in seleccion:
                 self._tabla.selection_set(fila["id_sat"])
 
-    def _mostrar_periodica(self):
-        from conxml import estado_local
-        cliente = self.app.cliente_actual
-        plan = planes(Config()).get(cliente, {})
-        autorizado = cliente in estado_local.cargar().get('sat_autorizados', [])
-        estado = 'Activa' if plan.get('activo') else 'Desactivada'
-        texto = f'Descarga periódica · {estado} para este cliente'
-        if plan:
-            from conxml.sat.periodicas import DIAS
-            for tarea, titulo in (('solicitar', 'Solicitar'), ('revisar', 'Revisar')):
-                horario = plan[tarea]
-                frecuencia = f"Cada {horario['cada']} días" if horario['frecuencia'] == 'Diario' else f"{DIAS[horario['dia']]} · cada {horario['cada']} semanas"
-                texto += f"\n{titulo}: {frecuencia} a las {horario['hora']}"
-        texto += '\nE.firma autorizada para segundo plano.' if autorizado else '\nAutoriza la e.firma para ejecutar con ConXml cerrado.'
-        self._aviso_periodica.configure(text=texto)
-
-    def _abrir_periodicidad(self):
-        self.app.navegar('ajustes')
-        self.app._pantallas['ajustes'].mostrar_periodicidad_sat()
-
-    def _autorizar_periodica(self):
-        try:
-            cliente, rfc = self._datos_cliente()
-            cer, key, password = self._credenciales()
-        except ErrorDescargaSAT as exc:
-            self._presentar_error(exc)
-            return
-        def trabajo():
-            from conxml import estado_local
-            from conxml.sat.programador_sistema import instalar
-            config = Config()
-            autorizar(config, cliente, rfc, cer, key, password)
-            instalar(config)
-            with Catalogo(self.app.db_path) as cat:
-                cat.conn.execute("DELETE FROM sat_ejecuciones_periodicas WHERE cliente=? AND estado='sin_autorizacion'", (cliente,))
-                cat.commit()
-            clientes = set(estado_local.cargar().get('sat_autorizados', []))
-            clientes.add(cliente)
-            estado_local.guardar({'sat_autorizados': sorted(clientes)})
-        def presentar(_resultado):
-            self._mostrar_firma_cliente(cliente)
-            self._mostrar_periodica()
-            self._estado_lbl.configure(text='E.firma autorizada. Guarda los horarios del cliente en Configuración.')
-        self.app.ejecutar(trabajo, presentar, 'Autorizando descargas SAT periódicas', al_error=self._presentar_error)
-        self._password.set('')
-
-    def _revocar_periodica(self):
-        from conxml import estado_local
-        cliente = self.app.cliente_actual
-        if not cliente:
-            return
-        try:
-            revocar(Config(), cliente)
-            clientes = set(estado_local.cargar().get('sat_autorizados', []))
-            clientes.discard(cliente)
-            estado_local.guardar({'sat_autorizados': sorted(clientes)})
-            self._mostrar_periodica()
-        except Exception:
-            self._presentar_error(ErrorDescargaSAT('No se pudo revocar la autorización del sistema.'))
-
     def _revision_periodica(self):
         self._periodica_after = None
         if getattr(self.app, '_cierre_solicitado', False):
@@ -688,7 +611,6 @@ class PantallaDescargas(ctk.CTkFrame):
                 with Catalogo(self.app.db_path) as cat:
                     filas = cat.solicitudes_descarga_cliente(self.app.cliente_actual)
                 self._renderizar_historial(filas)
-                self._mostrar_periodica()
             for resultado in resultados:
                 self.app.registro(f"SAT periódico · {resultado['cliente']} · {resultado['tarea']}: {resultado['mensaje']}")
             if resultados:

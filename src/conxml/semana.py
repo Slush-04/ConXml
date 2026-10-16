@@ -164,6 +164,8 @@ def procesar_semana(
     debe_detenerse: Callable[[], bool] | None = None,
 ) -> ResultadoSemana:
     """Procesa los clientes marcados en cadena; cada cliente aislado de los demás."""
+    from conxml.licensing_client import require_access
+    require_access()
     resultado = ResultadoSemana()
     if not config.clientes:
         return resultado
@@ -172,6 +174,7 @@ def procesar_semana(
     orden = _ordenar_por_pendientes(config, db_path)
 
     for posicion, etiqueta in enumerate(orden):
+        require_access()
         if debe_detenerse is not None and debe_detenerse():
             resultado.detenido = True
             break

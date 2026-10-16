@@ -73,6 +73,19 @@ a_cli = Analysis(
     noarchive=False,
 )
 
+# Sustituir el módulo de política en el archivo Python de ambos ejecutables.
+# Solo contiene URL y claves públicas; nunca empaquetar tokens ni claves privadas.
+trial_config = os.environ.get("CONXML_TRIAL_CONFIG")
+if trial_config:
+    import runpy
+    generate = runpy.run_path("scripts/trial_distribution.py")["generate"]
+    policy = generate(trial_config, "build/trial/distribucion.py")
+    for analysis in (a_gui, a_cli):
+        if not any(entry[0] == "conxml.distribucion" for entry in analysis.pure):
+            raise RuntimeError("No se encontró la política de distribución; compilación abortada.")
+        analysis.pure = [(name, policy if name == "conxml.distribucion" else path, kind)
+                         for name, path, kind in analysis.pure]
+
 pyz_gui = PYZ(a_gui.pure)
 pyz_cli = PYZ(a_cli.pure)
 

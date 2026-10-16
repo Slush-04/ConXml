@@ -704,6 +704,41 @@ class Catalogo:
             for estado in ("Vigente", "Cancelado", "No Encontrado", "Sin validar")
         }
 
+    def resumen_cliente(self, cliente: str) -> dict[str, Any]:
+        """Indicadores locales del cliente, incluidos UUID compartidos sin duplicarlos.
+
+        No carga los XML ni consulta servicios del SAT. Los errores de importación
+        no tienen cliente en el esquema y por eso no se atribuyen a este resumen.
+        """
+        where, params = self._filtros_consulta(cliente=cliente)
+        agrupados = self.conn.execute(
+            "SELECT tipo_comprobante, COALESCE(NULLIF(TRIM(estatus), ''), 'Sin validar'), "
+            "COUNT(*) FROM comprobantes" + where + " GROUP BY 1, 2", params,
+        ).fetchall()
+        estatus = {e: 0 for e in ("Vigente", "Cancelado", "No Encontrado", "Sin validar")}
+        tipos: dict[str, int] = {}
+        for tipo, estado, cantidad in agrupados:
+            tipos[tipo] = tipos.get(tipo, 0) + cantidad
+            estatus[estado] = estatus.get(estado, 0) + cantidad
+        fechas = self.conn.execute(
+            "SELECT MIN(fecha), MAX(fecha), MAX(estatus_fecha) FROM comprobantes" + where,
+            params,
+        ).fetchone()
+        solicitudes = self.conn.execute(
+            "SELECT estado, COUNT(*) FROM solicitudes_descarga "
+            "WHERE cliente = ? AND recuperado = 0 AND estado IN (1, 2, 3) GROUP BY estado",
+            (cliente,),
+        ).fetchall()
+        descargas = dict(solicitudes)
+        registro = self.obtener_cliente(cliente)
+        return {
+            "cliente": dict(registro) if registro else None,
+            "total": sum(tipos.values()), "estatus": estatus, "tipos": tipos,
+            "desde": fechas[0], "hasta": fechas[1], "ultima_validacion": fechas[2],
+            "descargas_pendientes": descargas.get(1, 0) + descargas.get(2, 0),
+            "descargas_listas": descargas.get(3, 0),
+        }
+
     def limpiar(self) -> None:
         """Vacía todas las tablas del catálogo para iniciar un nuevo lote limpio."""
         self.conn.executescript(

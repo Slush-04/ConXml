@@ -706,6 +706,13 @@ class ConXmlApp(ctk.CTkFrame):
                 parent=self,
             )
             return False
+        from conxml.licensing_client import get_client
+        from conxml.licencias import LicenseError
+        try:
+            get_client().require()
+        except LicenseError as exc:
+            messagebox.showwarning("Licencia de ConXml", str(exc), parent=self)
+            return False
         self._ocupada = True
         self._operacion_texto = texto
         self._operacion_pantalla = self._pantalla_actual
@@ -938,12 +945,23 @@ def main() -> None:
                 selector.al_mostrar()
                 raiz._selector_inicial = selector
 
-        primera_apertura(raiz, continuar_inicio)
+        from conxml.monitoreo import MonitoringController
+        raiz._monitor_controller = MonitoringController(raiz)
+        from conxml.ui.licencias import LicenseView
+        raiz._license_view = LicenseView(raiz, lambda: primera_apertura(raiz, continuar_inicio))
         logger.info("Iniciando ciclo de eventos de Tk")
         raiz.mainloop()
     except Exception as exc:
         mostrar_error_fatal("Error al iniciar ConXml", f"Fallo durante la inicialización de la interfaz:\n{exc}")
         raise
+    finally:
+        from conxml.licensing_client import _client
+        if _client:
+            _client.close()
+        if 'raiz' in locals():
+            controller = getattr(raiz, '_monitor_controller', None)
+            if controller:
+                controller.close(wait=1)
 
 
 def _mostrar_selector_clientes(parent, on_selected, db_path, on_close=None):

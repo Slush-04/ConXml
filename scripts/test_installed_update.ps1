@@ -16,6 +16,17 @@ $install = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT', '/SUPPR
 if ($install.ExitCode -ne 0) { throw "Falló Setup: $($install.ExitCode)" }
 $installedVersion = & (Join-Path $target 'conxml-cli.exe') --version
 if ($LASTEXITCODE -ne 0 -or $installedVersion.Trim() -ne "conxml $version") { throw 'Versión instalada incorrecta' }
+# Comprobar la política del binario, sin crear una identidad ni pedir códigos.
+$edition = & (Join-Path $target 'conxml-cli.exe') licencia edicion
+if ($LASTEXITCODE -ne 0 -or $edition.Trim() -notin @('trial', 'development')) { throw 'No se pudo identificar la edición instalada' }
+$trialBuild = $edition.Trim() -eq 'trial'
+if ($env:GITHUB_ACTIONS -eq 'true' -and -not $trialBuild) { throw 'Actions debe producir la edición de prueba protegida' }
+if ($trialBuild) {
+    $blockedDb = Join-Path $testRoot 'sin-activar.db'
+    $result = & (Join-Path $target 'conxml-cli.exe') import (Join-Path $testRoot 'sin-xml') SMOKE --db $blockedDb 2>&1
+    if ($LASTEXITCODE -ne 2 -or (Test-Path $blockedDb)) { throw 'La CLI permitió trabajar sin activar la licencia' }
+    Write-Host 'Edición de prueba y bloqueo CLI sin activación: OK'
+}
 New-Item -ItemType Directory -Path $env:CONXML_DATA_DIR -Force | Out-Null
 $sentinel = Join-Path $env:CONXML_DATA_DIR 'conservar.txt'
 Set-Content -LiteralPath $sentinel -Value 'datos intactos'
@@ -60,7 +71,7 @@ print(generar_script_actualizador(root / 'update.ps1',
     $deadline = (Get-Date).AddSeconds(20)
     do {
         $appProcesses = @(Get-Process | Where-Object { $_.Path -eq (Join-Path $target 'conxml.exe') })
-        $windows = @($appProcesses | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like 'ConXml*Gestor CFDI*' })
+        $windows = @($appProcesses | Where-Object { $_.MainWindowHandle -ne 0 -and (($trialBuild -and $_.MainWindowTitle -like 'ConXml*Licencia de prueba*') -or (-not $trialBuild -and $_.MainWindowTitle -like 'ConXml*Gestor CFDI*')) })
         if ($windows.Count -gt 0) { break }
         Start-Sleep -Milliseconds 500
     } while ((Get-Date) -lt $deadline)

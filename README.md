@@ -242,9 +242,17 @@ pytest
 
 ## 🔒 Privacidad y Seguridad
 
-- **100% Local**: Todos los datos se almacenan localmente en tu equipo dentro de una base de datos SQLite.
-- Los únicos paquetes de red transmitidos son consultas cifradas HTTPS/SOAP directas a los servidores oficiales del SAT para validar estatus de facturas.
+- **Datos fiscales locales**: El catálogo se almacena en SQLite y los XML y respaldos permanecen en tu equipo.
+- Las consultas y descargas fiscales se realizan con el SAT mediante HTTPS/SOAP; las actualizaciones se consultan en GitHub.
 - Ninguna información fiscal, RFC, o XML es enviada a servidores de terceros.
+- **Monitoreo opcional de equipos**: si importas una configuración del administrador
+  y lo activas en Configuración, ConXml comparte con el servicio HTTPS indicado su
+  versión, sistema operativo y estado de presencia cada 30 segundos. También recibe
+  mensajes y bloqueos/desbloqueos de acceso a ConXml de ese administrador. El último
+  bloqueo recibido se conserva al desconectar o reiniciar, sin borrar datos ni
+  interrumpir una operación en curso. La credencial se guarda en el almacén seguro
+  del sistema. Puedes desactivar el reporte desde Configuración cuando el acceso
+  esté permitido; no se envían datos fiscales ni se activa sin configuración.
 
 ---
 
@@ -287,3 +295,9 @@ Consulta [el inventario y registro de organización](docs/orden-carpetas.md) par
 - Clientes, Bóveda e historial de solicitudes SAT usan la misma tabla con paginación y copia de celdas que los visores.
 - El lateral muestra solo el nombre del cliente y la versión/actualización. Las rutas de almacenamiento se consultan en Configuración.
 - [Propuestas de automatización del SAT](docs/automatizaciones-sat.md).
+
+## Licencias de prueba cloud
+
+La integración de activación, permisos firmados y vencimiento está disponible para
+ediciones de prueba compiladas con una política pública incluida. Desarrollo y
+ediciones anteriores quedan exentos. Consulta [configuración, uso y validación](docs/licencias-cloud.md).

@@ -33,8 +33,10 @@ jobs:
       - name: Instalar Inno Setup
         shell: pwsh
         run: choco install innosetup --no-progress -y
-      - name: Compilar y probar
+      - name: Compilar y probar edición de prueba
         shell: pwsh
+        env:
+          CONXML_TRIAL_CONFIG: config/licensing-trial.json
         run: ./scripts/build_installer.ps1
       - name: Probar instalación y actualización reales
         shell: pwsh
