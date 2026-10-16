@@ -29,3 +29,34 @@ def generate(source, destination):
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(f"MODE = 'trial'\nSERVICE_URL = {data['service_url'].rstrip('/')!r}\nTRUSTED_KEYS = {keys!r}\n", encoding='utf-8')
     return str(target.resolve())
+
+
+def embed_policy(analysis, policy):
+    """Actualiza la ruta y el código que PYZ usa del caché de Analysis."""
+    from PyInstaller.config import CONF
+
+    module = 'conxml.distribucion'
+    if not any(name == module for name, _, _ in analysis.pure):
+        raise RuntimeError('No se encontró la política de distribución; compilación abortada.')
+    # El caché de PyInstaller se asocia al id de esta lista. Conservar la lista
+    # evita que su id se reutilice entre los dos Analysis y mezcle sus cachés.
+    analysis.pure[:] = [(name, policy if name == module else path, kind)
+                        for name, path, kind in analysis.pure]
+    cache = CONF['code_cache'].get(id(analysis.pure))
+    if cache is not None:
+        cache[module] = compile(Path(policy).read_text(encoding='utf-8'), policy, 'exec')
+
+
+def verify_archive(archive_path, policy):
+    """Comprobar el código del PYZ generado, antes de crear el ejecutable."""
+    import runpy
+    from PyInstaller.archive.readers import ZlibArchiveReader
+
+    expected = runpy.run_path(policy)
+    actual = {}
+    code = ZlibArchiveReader(str(archive_path)).extract('conxml.distribucion')
+    if code is None:
+        raise RuntimeError('El archivo empaquetado no contiene la política de prueba.')
+    exec(code, actual)
+    if any(actual.get(key) != expected[key] for key in ('MODE', 'SERVICE_URL', 'TRUSTED_KEYS')):
+        raise RuntimeError('La política empaquetada no corresponde a la edición de prueba; compilación abortada.')

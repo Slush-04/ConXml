@@ -78,16 +78,17 @@ a_cli = Analysis(
 trial_config = os.environ.get("CONXML_TRIAL_CONFIG")
 if trial_config:
     import runpy
-    generate = runpy.run_path("scripts/trial_distribution.py")["generate"]
-    policy = generate(trial_config, "build/trial/distribucion.py")
+    distribution = runpy.run_path("scripts/trial_distribution.py")
+    policy = distribution["generate"](trial_config, "build/trial/distribucion.py")
     for analysis in (a_gui, a_cli):
-        if not any(entry[0] == "conxml.distribucion" for entry in analysis.pure):
-            raise RuntimeError("No se encontró la política de distribución; compilación abortada.")
-        analysis.pure = [(name, policy if name == "conxml.distribucion" else path, kind)
-                         for name, path, kind in analysis.pure]
+        distribution["embed_policy"](analysis, policy)
 
 pyz_gui = PYZ(a_gui.pure)
 pyz_cli = PYZ(a_cli.pure)
+if trial_config:
+    for archive in (pyz_gui, pyz_cli):
+        distribution["verify_archive"](archive.name, policy)
+    print("Política de prueba verificada dentro de los archivos GUI y CLI.")
 
 if sys.platform == "darwin":
     # Los bundles .app de macOS deben contener el layout onedir. Empaquetar
