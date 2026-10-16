@@ -50,6 +50,7 @@ class Release:
     size: int
     name: str
     kind: str = "zip"  # "zip" para reemplazo directo o "installer" para setup interactivo
+    notes: str = ""
 
 
 # Esperar también al bootloader onefile y al CLI; el PID de la GUI no basta.
@@ -96,8 +97,10 @@ def generar_script_actualizador(
     expected_version: str = "",
     ready_file: Path | None = None,
     show_completion: bool = True,
+    release_notes: str = "",
 ) -> Path:
     """Genera el script PowerShell que reemplaza los binarios tras el cierre de ConXml."""
+    safe_notes = release_notes[:1400].replace("'", "''")
     contenido = f"""# Script de actualización desatendida para ConXml
 param(
     [Parameter(Mandatory=$false)][int]$ParentPid = {parent_pid},
@@ -109,6 +112,7 @@ param(
     [Parameter(Mandatory=$false)][string]$ReadyFile = '{str(ready_file or "").replace(chr(39), chr(39) * 2)}'
 )
 $ErrorActionPreference = "Stop"
+$releaseNotes = '{safe_notes}'
 
 function Write-Log($msg) {{
     $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
@@ -400,7 +404,9 @@ try {{
 Set-UpdateStatus "ConXml $ExpectedVersion se abrió correctamente. Actualización completada." 100
 Write-Log "Actualización completada exitosamente."
 if ($null -ne $form -and ${str(show_completion).lower()}) {{
-[System.Windows.Forms.MessageBox]::Show("ConXml se actualizó a la versión $ExpectedVersion y se abrió correctamente.", "Actualización completada", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+$completionMessage = "ConXml se actualizó a la versión $ExpectedVersion y se abrió correctamente."
+if ($releaseNotes) {{ $completionMessage += "`n`nMejoras de esta versión:`n$releaseNotes" }}
+[System.Windows.Forms.MessageBox]::Show($completionMessage, "Actualización completada", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
 $form.Close()
 }}
 if ($null -ne $form) {{ $form.Close() }}
@@ -529,7 +535,10 @@ class Updater:
                 self._safe_url(url, asset=True)
                 if not self.demo and url != f"https://github.com/{REPOSITORY}/releases/download/v{version}/{name}":
                     raise UpdateError("El artefacto no pertenece a la versión publicada.")
-                return Release(version, url, digest[7:], size, name, kind=kind)
+                notes = data.get("body") or ""
+                if not isinstance(notes, str):
+                    notes = ""
+                return Release(version, url, digest[7:], size, name, kind=kind, notes=notes[:5000].strip())
 
             return None
         except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError) as exc:
@@ -631,6 +640,7 @@ class Updater:
             log_file=log_file,
             expected_version=release.version,
             ready_file=ready_file,
+            release_notes=release.notes,
         )
 
         if sys.platform == "win32" and not self.demo and getattr(sys, "frozen", False):
