@@ -79,7 +79,7 @@ def test_corrupt_journal_never_changes_license_or_prevents_open(tmp_path,raw):
 
 def test_update_helper_failure_is_reported_once_without_uploading_log(tmp_path):
     logs=tmp_path/'logs';logs.mkdir()
-    (logs/'actualizacion.log').write_text('ERROR de actualización: PRIVATE PATH XML TOKEN\nRollback verificado.')
+    (logs/'actualizacion.log').write_text('ERROR de actualización: PRIVATE PATH XML TOKEN\nRollback verificado.', encoding='utf-8')
     clock=SimpleNamespace(wall=1800000000,mono=0)
     j=journal(tmp_path,clock)
     j.capture_update_result(logs);j.capture_update_result(logs)
@@ -89,7 +89,7 @@ def test_update_helper_failure_is_reported_once_without_uploading_log(tmp_path):
     j.close();second=journal(tmp_path,clock,j.device_id)
     second.capture_update_result(logs)
     assert len(second.diagnostics)==1
-    with (logs/'actualizacion.log').open('a') as out:out.write('\nActualización completada exitosamente.')
+    with (logs/'actualizacion.log').open('a', encoding='utf-8') as out:out.write('\nActualización completada exitosamente.')
     second.capture_update_result(logs)
     assert len(second.diagnostics)==1
 

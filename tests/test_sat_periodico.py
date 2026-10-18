@@ -71,7 +71,8 @@ def paquete_xml():
     import zipfile
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, 'w') as archivo:
-        archivo.writestr('factura.xml', (Path(__file__).parent / 'fixtures/ingreso_iva.xml').read_bytes())
+        archivo.writestr(zipfile.ZipInfo('factura.xml', date_time=(2024, 1, 1, 0, 0, 0)),
+                         (Path(__file__).parent / 'fixtures/ingreso_iva.xml').read_bytes())
     return stream.getvalue()
 
 
