@@ -707,6 +707,7 @@ class Updater:
             '    $arguments = @("/DIR=`"$TargetDir`"", "/LOG=`"$LogFile`"")\n'
             "    $setup = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru\n"
             "    if ($setup.ExitCode -ne 0) { throw \"Setup terminó con código $($setup.ExitCode). Instalador conservado: $installer\" }\n"
+            "    try { Add-Content -LiteralPath $LogFile -Value 'Actualización completada exitosamente.' -Encoding utf8 } catch {}\n"
             "} catch {\n"
             "    $failure = $_.Exception.Message\n"
             "    Write-Output $failure\n"

@@ -136,7 +136,7 @@ class Journal:
                              text.rfind('ERROR no controlado:'), text.rfind('ERROR:'))
                 success = text.rfind('Actualización completada exitosamente.')
                 if failed >= 0 and failed > success:
-                    self.error('update_install_failed', RuntimeError())
+                    self.error('update_install_failed', None)
                 if max(failed, success) >= 0:
                     self.update_stamps[name] = stamp
                     self._save()
