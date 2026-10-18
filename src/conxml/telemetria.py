@@ -35,6 +35,13 @@ def technical_diagnostic(code):
     return decorate
 
 
+def _identifier(value):
+    parsed = UUID(value)
+    if parsed.version != 4:
+        raise ValueError()
+    return str(parsed)
+
+
 class Journal:
     """Outbox local independiente del permiso; una falla del historial no bloquea uso."""
     def __init__(self, directory, device_id, *, wall=time.time, monotonic=time.monotonic, kind='cli'):
@@ -52,13 +59,19 @@ class Journal:
                 stamps = data.get('update_stamps', {})
                 if isinstance(stamps, dict):
                     self.update_stamps = {k: v for k, v in stamps.items() if k in ('actualizacion.log', 'actualizacion-setup.log') and isinstance(v, str) and len(v) < 100}
+                session_ids = set()
                 for session in data.get('sessions', [])[-30:]:
                     # Construir de nuevo impide retransmitir campos ajenos al contrato.
-                    identifier = str(UUID(session['id']))
+                    identifier = _identifier(session['id'])
+                    if identifier in session_ids:
+                        continue
+                    session_ids.add(identifier)
                     integers = [session[k] for k in ('sequence', 'started_at', 'observed_at', 'elapsed_seconds')]
                     if any(type(v) is not int or not 0 <= v <= 2**53 - 1 for v in integers):
                         continue
                     if session['state'] not in ('running', 'closed', 'interrupted') or session['kind'] not in ('gui', 'cli', 'scheduled'):
+                        continue
+                    if session['sequence'] >= 2**53 - 1:
                         continue
                     start = session['started_at']
                     state = 'interrupted' if session['state'] == 'running' else session['state']
@@ -66,9 +79,13 @@ class Journal:
                         started_at=start, observed_at=max(start, session['observed_at']),
                         ended_at=max(start, session['observed_at']), elapsed_seconds=min(LIMIT_SECONDS, session['elapsed_seconds']),
                         state=state, kind=session['kind']))
+                event_ids = set()
                 for event in data.get('diagnostics', [])[-50:]:
                     if event.get('code') in CODES and event.get('exception_type') in TYPES:
-                        self.diagnostics.append(dict(id=str(UUID(event['id'])), code=event['code'], exception_type=event['exception_type']))
+                        identifier = _identifier(event['id'])
+                        if identifier not in event_ids:
+                            self.diagnostics.append(dict(id=identifier, code=event['code'], exception_type=event['exception_type']))
+                            event_ids.add(identifier)
         except (OSError, ValueError, TypeError, KeyError, AttributeError):
             self.sessions, self.diagnostics = [], []
         now = max(0, int(wall()))

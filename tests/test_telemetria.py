@@ -100,3 +100,19 @@ def test_local_storage_failure_does_not_prevent_telemetry_or_change_permission(t
     j=journal(tmp_path,SimpleNamespace(wall=1800000000,mono=0))
     j.error('operation_failed',ValueError('private'))
     assert j.payload()['diagnostics'][0]['exception_type']=='ValueError'
+
+
+def test_invalid_or_duplicate_local_identifiers_never_poison_next_validation(tmp_path):
+    clock=SimpleNamespace(wall=1800000000,mono=0)
+    j=journal(tmp_path,clock)
+    data=json.loads(j.path.read_text())
+    data['sessions']*=2
+    data['sessions'][0]['id']='00000000-0000-1000-8000-000000000000'
+    j.path.write_text(json.dumps(data))
+    restored=journal(tmp_path,clock,j.device_id)
+    assert len(restored.payload()['sessions'])==1
+    data=json.loads(restored.path.read_text())
+    data['sessions']*=2
+    restored.path.write_text(json.dumps(data))
+    restored=journal(tmp_path,clock,j.device_id)
+    assert len(restored.payload()['sessions'])==2
