@@ -312,3 +312,17 @@ def test_invalid_close_signature_never_discards_pending_errors(setup,monkeypatch
     state['nonce']=str(uuid4())
     client.close()
     assert len(client.telemetry.diagnostics)==1
+
+
+@pytest.mark.parametrize('vault_failure',[False,True])
+def test_close_persists_received_denial_even_if_vault_fails(setup,vault_failure):
+    create,clock,vault,state,calls=setup
+    client=create();client.sync('a'*43)
+    state.update(status='revoked',revision=1)
+    vault.fail=vault_failure
+    client.close()
+    vault.fail=False
+    restarted=create()
+    assert not restarted.allowed()
+    # El permiso anterior no se acepta aunque el keyring no haya guardado el cierre.
+    assert restarted.record['revisions'][state['license']][0]==1

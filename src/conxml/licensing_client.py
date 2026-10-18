@@ -349,7 +349,23 @@ class LicenseClient:
                                 state='closed', nonce=nonce, telemetry=sent)
                     try:
                         result = request_json(self.url, '/v1/check-in', data, self.record['token'])
-                        self._verify(result['lease'], nonce)
+                        lease = self._verify(result['lease'], nonce)
+                        if self.lease and lease.issued_at < self.lease.issued_at:
+                            raise LicenseError('La respuesta del servicio no es válida.')
+                        if lease.status != 'trial':
+                            # Un cierre también puede recibir una revocación. Registrar
+                            # la denegación antes de salir, con la misma garantía WAL.
+                            with self.mutex:
+                                self.broken = True
+                                self.anchor = None
+                                save_record({'lease': result['lease']}, self.directory / 'lease.json')
+                                self.record['lease'] = result['lease']
+                                self.record['revisions'][lease.license_id] = [lease.license_revision, lease.device_revision]
+                                self.record['last_wall'] = max(self.record['last_wall'], self.wall())
+                                self.record['trusted_now'] = max(self.record['trusted_now'], lease.issued_at)
+                                self._persist()
+                                self.lease = lease
+                                self.broken = False
                         self.telemetry.acknowledge(result.get('telemetry_ack'), sent)
                     except (LicenseError, KeyError, TypeError, OSError):
                         pass
