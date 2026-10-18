@@ -234,8 +234,19 @@ def main() -> int:
     parser.add_argument('--datos', required=True, type=Path)
     args = parser.parse_args()
     os.environ['CONXML_DATA_DIR'] = str(args.datos.resolve())
-    ejecutar_pendientes(Config())
-    return 0
+    from conxml.licensing_client import get_client
+    client = get_client()
+    if client.required:
+        client.telemetry.current['kind'] = 'scheduled'
+    try:
+        ejecutar_pendientes(Config())
+        return 0
+    except Exception as exc:
+        from conxml.telemetria import report_error
+        report_error('command_failed', exc)
+        raise
+    finally:
+        client.close()
 
 
 if __name__ == '__main__':

@@ -733,6 +733,8 @@ class ConXmlApp(ctk.CTkFrame):
                 else:
                     resultado = fn()
             except Exception as exc:
+                from conxml.telemetria import report_error
+                report_error('operation_failed', exc)
                 self._cola.put(("error", traceback.format_exc(), al_error, exc))
                 return
             self._cola.put(("listo", al_terminar, resultado))
@@ -784,7 +786,9 @@ class ConXmlApp(ctk.CTkFrame):
                         return
         except queue.Empty:
             pass
-        except Exception:
+        except Exception as exc:
+            from conxml.telemetria import report_error
+            report_error('result_failed', exc)
             self.registro("ERROR: " + traceback.format_exc())
             messagebox.showerror("Error al mostrar resultado", "No se pudo mostrar el progreso o resultado de la operación. Consulta el diagnóstico.", parent=self)
         finally:
@@ -898,6 +902,11 @@ def main() -> None:
             pass
         raiz.configure(fg_color=th.FONDO)
         _aplicar_icono(raiz)
+        def technical_callback_error(exc_type, exc_value, exc_tb):
+            from conxml.telemetria import report_error
+            report_error('ui_callback_failed', exc_value)
+            tk.Tk.report_callback_exception(raiz, exc_type, exc_value, exc_tb)
+        raiz.report_callback_exception = technical_callback_error
         logger.info("Ventana principal creada")
         # La ventana raíz también se usa como selector inicial. Mantenerla visible
         # evita depender de un Toplevel transitorio cuyo padre está oculto, estado
@@ -952,6 +961,8 @@ def main() -> None:
         logger.info("Iniciando ciclo de eventos de Tk")
         raiz.mainloop()
     except Exception as exc:
+        from conxml.telemetria import report_error
+        report_error('startup_failed', exc)
         mostrar_error_fatal("Error al iniciar ConXml", f"Fallo durante la inicialización de la interfaz:\n{exc}")
         raise
     finally:

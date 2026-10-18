@@ -7,6 +7,8 @@ Conserva el instalador interactivo como método de instalación inicial y rescat
 """
 from __future__ import annotations
 
+from conxml.telemetria import technical_diagnostic
+
 import hashlib
 import os
 import platform
@@ -491,6 +493,7 @@ class Updater:
             return response
         raise UpdateError("Demasiadas redirecciones.")
 
+    @technical_diagnostic('update_check_failed')
     def check(self) -> Release | None:
         if not self.demo and (sys.platform != "win32" or platform.machine().lower() not in {"amd64", "x86_64"}):
             return None
@@ -544,6 +547,7 @@ class Updater:
         except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError) as exc:
             raise UpdateError("No se pudo consultar la actualización. Puedes reintentar con conexión.") from exc
 
+    @technical_diagnostic('update_download_failed')
     def download(self, release: Release, progress=None) -> Path:
         self.cache.mkdir(parents=True, exist_ok=True)
         valid_names = (
@@ -577,6 +581,7 @@ class Updater:
         finally:
             Path(temporary).unlink(missing_ok=True)
 
+    @technical_diagnostic('update_install_failed')
     def apply_update(
         self,
         release: Release,
@@ -705,6 +710,7 @@ class Updater:
             "} catch {\n"
             "    $failure = $_.Exception.Message\n"
             "    Write-Output $failure\n"
+            "    try { Add-Content -LiteralPath $LogFile -Value 'ERROR: actualización por instalador fallida' -Encoding utf8 } catch {}\n"
             "    try { Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show(\"$failure`nRegistro: $LogFile\", 'No se pudo actualizar ConXml') | Out-Null } catch {}\n"
             "    exit 1\n"
             "}\n",

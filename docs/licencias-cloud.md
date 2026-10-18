@@ -95,15 +95,18 @@ El permiso acaba como máximo a las 24 horas o al fin original de la prueba.
 
 La carpeta `.conxml-licensing`, junto a la carpeta de configuración de ConXml, está
 fuera del expediente fiscal habitual y contiene solo el bloqueo de sesión y una copia
-del permiso. No contiene el token ni el código. No incluir esa carpeta ni el keyring
+del permiso, además de la outbox técnica `telemetry.json`. No contiene el token ni el código. No incluir esa carpeta ni el keyring
 en respaldos fiscales. Restaurar un respaldo de ConXml no revierte una denegación.
 
 Solo se admite una sesión de la edición de prueba por instalación, compartida entre
 GUI, CLI y ejecutor periódico. Una segunda sesión informa que ConXml está abierto;
-una tarea del sistema se reintentará en su siguiente ejecución. No se envía señal
-`closed`: se pasa a `inactive` al transcurrir 900 segundos sin señales, evitando que
-un cierre tardío oculte otro proceso. El panel no debe interpretar falta de señal
-como revocación.
+una tarea del sistema se reintentará en su siguiente ejecución. Se envía `closed`
+al cerrar normalmente, con UUID y secuencia de sesión para que un cierre tardío no
+oculte una nueva apertura. Sin señal durante 900 segundos se muestra inactivo;
+esto no equivale a cierre ni revocación. Si se cierra sin internet, el informe
+queda pendiente hasta una validación posterior. Un cierre inesperado se identifica
+al siguiente arranque usando la última observación guardada, sin contar el intervalo
+en que ConXml estuvo apagado.
 
 El control se comprueba antes de una operación GUI, un comando CLI y cada tarea
 SAT/cliente semanal nuevo. Una operación en curso termina; el modal espera a que
@@ -117,7 +120,10 @@ El proyecto hermano `ConXml-UpdateManager-main` añade **Licencias y pruebas**:
 URL HTTPS, credencial en keyring separada, consulta manual, creación con duración
 explícita y código visible una vez con botón Copiar, bloqueo/desbloqueo por equipo
 o licencia y revocación con confirmación. Se presentan actividad y acceso por
-separado, última IP, versión y señal. Un fallo conserva la última lista y su hora de
+separado, sistema operativo, primera activación, vencimiento, días restantes, última IP, versión y señal.
+Los días se calculan con la hora del servicio, redondeando hacia arriba; cero significa
+que venció y una licencia sin activar no tiene fecha ni días restantes. Cada equipo
+muestra su primera activación; la licencia muestra la primera de cualquiera de sus equipos. Un fallo conserva la última lista y su hora de
 sincronización. Las consultas del panel no afectan a las validaciones de los clientes.
 
 Una instalación con prueba vencida o licencia bloqueada/revocada puede introducir
@@ -135,7 +141,7 @@ una sesión por instalación, CLI y espera de operaciones/diálogos. El servicio
 D1 local para verificar plazas, reintentos, cambio de licencia y concurrencia.
 
 El despliegue y las credenciales reales del piloto ya están configurados. Siguen
-pendientes la política de retención y respaldos D1, auditoría ampliada de transferencias, recuperación de
+pendientes la retención general de licencias/IP y respaldos D1, auditoría ampliada de transferencias, recuperación de
 credenciales y reasignación de equipos. Mensajes cloud y ampliación de plazo siguen
 fuera de esta API. Antes de publicar se necesita probar el instalador Windows real
 (con/sin red, cambio de reloj, cierre durante una escritura, actualización y
@@ -176,3 +182,31 @@ Crear prueba. Elegir etiqueta, días y equipos; copiar el código en su única
 presentación e introducirlo en la edición Windows de prueba. No hace falta
 recompilar para usar la API activada. Falta validar manualmente ese recorrido
 completo en Windows con/sin red y con cambio de reloj antes de ampliar la distribución.
+
+## Sesiones y diagnóstico técnico
+
+En **Licencias y pruebas**, selecciona un equipo y pulsa **Ver sesiones y diagnóstico…**.
+El detalle presenta aperturas, cierres informados, última observación de sesiones
+interrumpidas y tiempo aproximado con ConXml abierto. Distingue ventana, comando
+y tarea programada. Los totales corresponden exclusivamente al historial disponible;
+no son tiempo de trabajo del usuario ni un contador de actividad de teclado/ratón.
+
+La duración usa el reloj monotónico, se actualiza con cada señal y se conserva en
+una outbox local acotada cuando falla la conexión. Los reintentos se deduplican
+por UUID y revisión; solo una respuesta con permiso firmado válido permite confirmar
+los datos enviados. Un fallo del archivo técnico no concede permisos ni bloquea
+la licencia. Las fechas de sesión son aproximadas y no cambian el vencimiento.
+
+Se envían únicamente categorías de fallos de operaciones, interfaz, comandos y
+consulta/descarga/instalación de actualizaciones, junto a un tipo de excepción permitido.
+No se envían mensajes de excepciones, trazas, rutas, registros completos, XML, RFC
+ni credenciales. Al volver a abrir se reconocen marcadores de fallo del helper de
+actualización y se envía solo la categoría. El panel muestra la hora de recepción
+del diagnóstico, que puede ser posterior al error si no había conexión.
+
+Cada equipo conserva como máximo 30 sesiones y 50 errores recibidos dentro de
+los últimos 30 días. Una limpieza diaria elimina registros técnicos antiguos
+incluso si el equipo no vuelve a conectar. No borra licencias, equipos ni fechas
+de activación. Es necesario aplicar `0002_telemetry.sql` antes del nuevo Worker.
+Los clientes 0.2.32 siguen validando con el contrato previo; aportarán sesiones y
+diagnóstico al instalar una compilación con esta mejora. No se reconstruye historial anterior.

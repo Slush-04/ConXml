@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from conxml.telemetria import technical_diagnostic
+
 import argparse
 from pathlib import Path
 
@@ -84,6 +86,7 @@ def construir_parser() -> argparse.ArgumentParser:
     return parser
 
 
+@technical_diagnostic('command_failed')
 def main(argv: list[str] | None = None) -> None:
     parser = construir_parser()
     args = parser.parse_args(argv)

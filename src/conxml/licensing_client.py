@@ -111,6 +111,8 @@ class LicenseClient:
         self.worker = None
         self.process_lock = None
         self.broken = False
+        self.telemetry = None
+        self.closed = False
         if not self.required:
             return
         if self.mode != 'trial':
@@ -126,6 +128,11 @@ class LicenseClient:
         self.process_lock = InstallationLock(self.directory / 'session.lock')
         try:
             self._load()
+            from conxml import telemetria
+            self.telemetry = telemetria.Journal(self.directory, self.record['device_id'], wall=wall, monotonic=monotonic)
+            if directory is None:
+                self.telemetry.capture_update_result(Config().logs_dir)
+            telemetria._journal = self.telemetry
         except Exception:
             self.process_lock.close()
             raise
@@ -255,13 +262,16 @@ class LicenseClient:
         if not self.required:
             return
         with self.sync_mutex:
+            if self.closed:
+                raise LicenseError('Esta sesión de ConXml ya terminó.')
             if self.monotonic() < self.next_attempt:
                 raise LicenseError('Espera antes de reintentar la validación.')
             if code is not None and not re.fullmatch(r'[A-Za-z0-9_-]{43}', code):
                 raise LicenseError('El código de licencia no tiene el formato esperado.')
             nonce = str(uuid4())
             data = {'device_id': self.record['device_id'], 'version': __version__,
-                    'os': platform.system(), 'state': 'running', 'nonce': nonce}
+                    'os': (platform.system() + ' ' + platform.release())[:100], 'state': 'running', 'nonce': nonce,
+                    'telemetry': self.telemetry.payload()}
             if code is not None:
                 data.update(license_key=code, device_token=self.record['token'],
                             label='Equipo ' + self.record['device_id'][:4].upper())
@@ -288,6 +298,7 @@ class LicenseClient:
                     self.lease = lease
                     self.anchor = (lease.issued_at, started)
                     self.broken = False
+                self.telemetry.acknowledge(result.get('telemetry_ack'), data['telemetry'])
                 self.failures = 0
                 self.next_attempt = self.monotonic() + 300 + random.uniform(0, 30)
                 self.error = ''
@@ -299,8 +310,9 @@ class LicenseClient:
                 raise LicenseError(self.error) from None
 
     def start(self):
-        if not self.required or self.worker is not None:
+        if not self.required or self.closed or self.worker is not None:
             return
+        self.telemetry.current['kind'] = 'gui'
         self.worker = threading.Thread(target=self._run, daemon=True, name='conxml-license')
         self.worker.start()
 
@@ -314,13 +326,36 @@ class LicenseClient:
             self.stopped.wait(1)
 
     def close(self):
+        if self.closed:
+            return
+        self.closed = True
         self.stopped.set()
         if self.worker and self.worker is not threading.current_thread():
             self.worker.join(timeout=1)
-        # No se envía 'closed': un cierre tardío no debe ocultar otra sesión.
-        # El servidor mostrará 'inactive' tras su umbral de última señal.
-        if self.process_lock and (self.worker is None or not self.worker.is_alive()):
-            self.process_lock.close()
+        if self.telemetry:
+            self.telemetry.close()
+            from conxml import telemetria
+            if telemetria._journal is self.telemetry:
+                telemetria._journal = None
+        # Mantener el candado hasta terminar el último envío evita solapamientos.
+        # Si hay una validación en curso, el cierre permanece en la outbox local.
+        if self.process_lock and self.sync_mutex.acquire(blocking=False):
+            try:
+                if self.record.get('lease') and not self.failures and not self.broken:
+                    nonce = str(uuid4())
+                    sent = self.telemetry.payload(closed=True)
+                    data = dict(device_id=self.record['device_id'], version=__version__,
+                                os=(platform.system() + ' ' + platform.release())[:100],
+                                state='closed', nonce=nonce, telemetry=sent)
+                    try:
+                        result = request_json(self.url, '/v1/check-in', data, self.record['token'])
+                        self._verify(result['lease'], nonce)
+                        self.telemetry.acknowledge(result.get('telemetry_ack'), sent)
+                    except (LicenseError, KeyError, TypeError, OSError):
+                        pass
+            finally:
+                self.sync_mutex.release()
+                self.process_lock.close()
 
 
 _client = None

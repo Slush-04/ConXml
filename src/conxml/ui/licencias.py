@@ -36,7 +36,7 @@ class LicenseView:
         body = ttk.Frame(window, padding=24)
         body.pack(fill='both', expand=True)
         ttk.Label(body, text='Licencia de prueba', font=('TkDefaultFont', 18, 'bold')).pack(anchor='w')
-        ttk.Label(body, text='La activación requiere internet. Se comparte el identificador de instalación,\nversión, sistema, actividad y última IP con el servicio de licencias.\nLos XML, RFC y credenciales fiscales permanecen en tu equipo.\nAl vencer o bloquearse el acceso, tus archivos se conservan.',
+        ttk.Label(body, text='La activación requiere internet. Se comparte el identificador de instalación,\nversión, sistema, sesiones, categorías de error y última IP con el servicio.\nLos XML, RFC y credenciales fiscales permanecen en tu equipo.\nAl vencer o bloquearse el acceso, tus archivos se conservan.',
                   wraplength=550, justify='left').pack(anchor='w', pady=12)
         self.status = ttk.Label(body, text=self.client.error, wraplength=550, justify='left')
         self.status.pack(anchor='w', pady=8)

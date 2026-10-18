@@ -282,3 +282,33 @@ def test_journal_failure_stops_old_permit_in_current_session(setup, monkeypatch)
     with pytest.raises(LicenseError):
         client.sync()
     assert not client.allowed()
+
+
+def test_closed_session_reports_and_validates_before_ack(setup,monkeypatch):
+    create,clock,vault,state,calls=setup
+    transport=lc.request_json
+    def response(*args,**kwargs):
+        result=transport(*args,**kwargs)
+        sent=args[2]['telemetry']
+        result['telemetry_ack']={'sessions':[{'id':s['id'],'sequence':s['sequence']} for s in sent['sessions']],
+                                 'diagnostics':[e['id'] for e in sent['diagnostics']]}
+        return result
+    monkeypatch.setattr(lc,'request_json',response)
+    client=create();client.sync('a'*43)
+    client.telemetry.error('operation_failed',ValueError('private'))
+    clock.mono=45
+    client.close()
+    payload=calls[-1][1]
+    assert payload['state']=='closed'
+    assert payload['telemetry']['sessions'][-1]['elapsed_seconds']==45
+    assert not client.telemetry.sessions and not client.telemetry.diagnostics
+    count=len(calls);client.close();assert len(calls)==count
+
+
+def test_invalid_close_signature_never_discards_pending_errors(setup,monkeypatch):
+    create,clock,vault,state,calls=setup
+    client=create();client.sync('a'*43)
+    client.telemetry.error('operation_failed',ValueError('private'))
+    state['nonce']=str(uuid4())
+    client.close()
+    assert len(client.telemetry.diagnostics)==1
