@@ -210,3 +210,23 @@ incluso si el equipo no vuelve a conectar. No borra licencias, equipos ni fechas
 de activación. Es necesario aplicar `0002_telemetry.sql` antes del nuevo Worker.
 Los clientes 0.2.32 siguen validando con el contrato previo; aportarán sesiones y
 diagnóstico al instalar una compilación con esta mejora. No se reconstruye historial anterior.
+
+## Verificación de sesiones y diagnóstico, 17 de octubre de 2026
+
+La API está desplegada con `0002_telemetry.sql` y se verificó con activación firmada,
+sesión, diagnóstico técnico, cierre y lectura administrativa. Las licencias y equipos
+existentes conservaron fechas, permisos e identidades. La prueba técnica quedó revocada.
+El Administrador pasó 86 pruebas y 11 subpruebas, además de una comprobación con Tk real;
+el servicio pasó 24 pruebas Worker/D1 local y el dry-run de Wrangler.
+
+La compilación Windows 0.2.33 pasó 387 pruebas (12 omitidas, una integración
+deseleccionada), generó la edición protegida y completó la instalación y actualización
+reales con conservación de datos. Build:
+https://github.com/Slush-04/ConXml/actions/runs/39084068213.
+La validación incluyó persistir denegaciones recibidas al cerrar, incluso si falla
+el keyring, y corregir fixtures de ZIP/UTF-8 para que las pruebas sean portables.
+
+El instalador está como artefacto privado y registrado como build pendiente en el
+Administrador para **Descargar build**; todavía requiere publicar la actualización
+para distribuirla. Los equipos con 0.2.32 necesitan actualizarse para enviar sesiones
+y diagnóstico; sus permisos y fechas actuales se conservan.
